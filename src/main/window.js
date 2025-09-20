@@ -9,8 +9,8 @@ class WindowService {
 
     createMainWindow(options = {}) {
         const defaultOptions = {
-            width: 320,
-            height: 80,
+            width: 240,
+            height: 60,
             frame: false,
             transparent: true,
             backgroundColor: '#00000000',

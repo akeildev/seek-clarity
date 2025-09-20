@@ -18,8 +18,8 @@ async function initializeServices() {
 
 function createWindow() {
     mainWindow = new BrowserWindow({
-        width: 320,
-        height: 80,
+        width: 240,
+        height: 60,
         x: 20,
         y: 20,
         webPreferences: {

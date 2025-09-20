@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" style="background: transparent;">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clarity</title>
+    <link rel="stylesheet" href="styles/glass.css">
+    <link rel="stylesheet" href="styles/liquid.css">
+</head>
+<body style="background: transparent;">
+    <div id="app">
+        <div class="drag-region">
+            <div class="drag-handle">
+                <span class="handle-dot"></span>
+                <span class="handle-dot"></span>
+                <span class="handle-dot"></span>
+            </div>
+        </div>
+
+        <div class="glass-pill">
+            <div class="pill-content">
+                <button class="voice-button" id="voiceButton">
+                    <div class="voice-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M9.5 2C5.9 2 3 4.9 3 8.5c0 2.3 1.2 4.3 3 5.4V21l3-3h5.5c3.6 0 6.5-2.9 6.5-6.5S18.1 5 14.5 5c-.2 0-.5 0-.7.1C13.3 3.3 11.6 2 9.5 2z"></path>
+                            <circle cx="9" cy="9" r="1"></circle>
+                            <circle cx="15" cy="11" r="1"></circle>
+                            <circle cx="9" cy="13" r="1"></circle>
+                        </svg>
+                    </div>
+                    <span class="voice-label">Clarity</span>
+                </button>
+
+                <div class="visualizer" id="visualizer">
+                    <canvas id="waveCanvas"></canvas>
+                </div>
+
+                <button class="mute-button" id="muteButton">
+                    <div class="mute-icon">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+                            <line x1="23" y1="9" x2="17" y2="15" class="mute-line"></line>
+                            <line x1="17" y1="9" x2="23" y2="15" class="mute-line"></line>
+                        </svg>
+                    </div>
+                </button>
+
+                <button class="close-button" id="closeButton">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
