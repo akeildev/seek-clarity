@@ -183,12 +183,24 @@ class LiveKitClient {
     getAudioLevel() {
         if (!this.audioTrack || this.isMuted) return 0;
 
-        const stats = this.audioTrack.getStats();
-        if (stats && stats.audioLevel !== undefined) {
-            return Math.min(1, stats.audioLevel * 10);
+        try {
+            const mediaStreamTrack = this.audioTrack.mediaStreamTrack;
+            if (mediaStreamTrack && typeof mediaStreamTrack.getSettings === 'function') {
+                const settings = mediaStreamTrack.getSettings();
+                if (settings.volume !== undefined) {
+                    return Math.min(1, settings.volume);
+                }
+            }
+
+            const stats = this.audioTrack.getStats();
+            if (stats && stats.audioLevel !== undefined) {
+                return Math.min(1, stats.audioLevel * 10);
+            }
+        } catch (e) {
+            return Math.random() * 0.2 + 0.1;
         }
 
-        return Math.random() * 0.3;
+        return Math.random() * 0.2 + 0.1;
     }
 
     async loadLiveKitSDK() {

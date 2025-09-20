@@ -51,6 +51,12 @@ class LiquidVisualizer {
         if (level > 0.3 && Math.random() > 0.7) {
             this.createParticle();
         }
+
+        if (level > 0.5) {
+            this.waves.forEach((wave, i) => {
+                wave.amplitude = (5 + i * 2) * (1 + level * 0.5);
+            });
+        }
     }
 
     createParticle() {
@@ -147,12 +153,14 @@ class LiquidVisualizer {
 
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
 
-        this.audioLevel += (this.targetAudioLevel - this.audioLevel) * this.smoothingFactor;
+        const smoothingFactor = this.audioLevel > this.targetAudioLevel ? 0.25 : 0.15;
+        this.audioLevel += (this.targetAudioLevel - this.audioLevel) * smoothingFactor;
 
         const time = Date.now() * 0.001;
 
         this.waves.forEach((wave, index) => {
-            wave.phase += wave.speed;
+            wave.phase += wave.speed * (1 + this.audioLevel * 0.5);
+            wave.amplitude += ((5 + index * 2) - wave.amplitude) * 0.1;
             this.drawWave(wave, time);
         });
 
