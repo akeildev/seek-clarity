@@ -23,6 +23,7 @@ function createWindow() {
         x: 20,
         y: 20,
         webPreferences: {
+            preload: path.join(__dirname, '../renderer/preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
             webSecurity: true
@@ -99,6 +100,7 @@ ipcMain.handle('app:close', () => {
     if (mainWindow) {
         mainWindow.close();
     }
+    app.quit();
 });
 
 module.exports = { mainWindow };

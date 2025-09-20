@@ -19,7 +19,14 @@ class ClarityApp {
     init() {
         this.setupEventListeners();
         this.initVisualizer();
+        this.initControls();
         console.log('[App] Initialized');
+    }
+
+    initControls() {
+        if (window.ControlsManager) {
+            this.controls = new window.ControlsManager();
+        }
     }
 
     setupEventListeners() {
