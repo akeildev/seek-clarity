@@ -1,0 +1,53 @@
+# Dependencies
+node_modules/
+*.log
+npm-debug.log*
+
+# Python
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+*.egg-info/
+dist/
+build/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Electron
+out/
+dist/
+
+# Logs
+logs/
+*.log
+clarity_agent.log
+
+# Test files
+test_*
+*_test.py
+*_test.js
+*.test.js
+*.test.py
+
+# Temporary files
+*.tmp
+temp/
+tmp/
