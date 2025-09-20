@@ -1,0 +1,27 @@
+{
+  "name": "seek-clarity",
+  "version": "1.0.0",
+  "description": "A voice assistant with modern glass UI",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/akeildev/seek-clarity.git"
+  },
+  "keywords": ["electron", "voice", "assistant", "livekit"],
+  "author": "Akeil",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.57.4",
+    "dotenv": "^17.2.2",
+    "electron": "^38.1.0",
+    "electron-store": "^10.1.0",
+    "express": "^5.1.0",
+    "livekit-server-sdk": "^2.13.3",
+    "uuid": "^13.0.0",
+    "ws": "^8.18.3"
+  }
+}
