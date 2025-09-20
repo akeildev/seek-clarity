@@ -1,11 +1,9 @@
-# Create: src/agent/reading_a2c.py
+# Reading A2C Agent
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
-from reading_environment import ReadingEnvironment
-from mcp_utils import ReadingStateCollector
 
 class ReadingA2C(nn.Module):
     def __init__(
@@ -17,7 +15,7 @@ class ReadingA2C(nn.Module):
         n=1,  # n-step
         gamma=0.99,
         device="cpu",
-        voice_agent=None,
+        voice_agent=None, # this is Akeils stuff from before
     ):
         super(ReadingA2C, self).__init__()
 
@@ -28,8 +26,8 @@ class ReadingA2C(nn.Module):
         self.device = device
         self.voice_agent = voice_agent
         
-        # Initialize state collector
-        self.state_collector = ReadingStateCollector(voice_agent)
+        # State tracking
+        self.current_state = None
 
         hidden_layer_size = 256
 
@@ -170,15 +168,31 @@ class ReadingA2C(nn.Module):
                 baseline_loss.backward()
                 self.critic_optimizer.step()
     
-    async def collect_state_from_text(self, text_content: str, user_commands: list = None):
-        """Collect state from text content and user commands using MCP tools"""
-        state_dict = await self.state_collector.collect_reading_state(text_content, user_commands)
-        return state_dict
+    def collect_state_from_data(self, state_data: dict):
+        """Collect state from provided data"""
+        self.current_state = state_data
+        return state_data
     
-    def get_recommended_action(self, text_content: str, user_commands: list = None):
+    def get_recommended_action(self, state_data: dict):
         """Get recommended action based on current state"""
-        # Get state vector from collector
-        state_vector = self.state_collector.get_state_vector()
+        if not self.current_state:
+            self.current_state = state_data
+        
+        # Convert state to vector
+        state_vector = np.array([
+            state_data.get('text_difficulty', 0.5),
+            state_data.get('text_length', 0.5),
+            state_data.get('text_type', 0.4),
+            state_data.get('reading_speed', 1.0),
+            state_data.get('pause_frequency', 0.3),
+            state_data.get('highlight_intensity', 0.5),
+            state_data.get('chunk_size', 0.5),
+            state_data.get('user_engagement', 0.5),
+            state_data.get('user_comprehension', 0.5),
+            state_data.get('session_progress', 0.0),
+            state_data.get('action_count', 0),
+            state_data.get('recent_commands', 0.0)
+        ])
         
         # Pad to expected state size if needed
         if len(state_vector) < self.state_size:
@@ -194,9 +208,9 @@ class ReadingA2C(nn.Module):
         
         return action.squeeze(0).numpy()
     
-    def get_recommended_settings(self, text_content: str, user_commands: list = None) -> dict:
+    def get_recommended_settings(self, state_data: dict) -> dict:
         """Get recommended settings based on current state and text"""
-        action = self.get_recommended_action(text_content, user_commands)
+        action = self.get_recommended_action(state_data)
         
         # Map action to settings
         settings = {

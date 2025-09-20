@@ -1,9 +1,8 @@
-# Create: src/agent/reading_environment.py
+# Reading Environment for A2C Agent
 import asyncio
 import numpy as np
 import torch
 from typing import List, Dict, Any
-from mcp_utils import ReadingStateCollector
 
 class ReadingEnvironment:
     def __init__(self, state_size=20, action_size=8, voice_agent=None):
@@ -11,8 +10,8 @@ class ReadingEnvironment:
         self.action_size = action_size
         self.voice_agent = voice_agent
         
-        # Initialize state collector
-        self.state_collector = ReadingStateCollector(voice_agent)
+        # State tracking
+        self.current_state = None
         
         # Reading state components
         self.current_text_difficulty = 0.5
@@ -55,11 +54,6 @@ class ReadingEnvironment:
     
     def _get_state_vector(self):
         """Convert current state to vector for neural network"""
-        # Use state collector if available
-        if self.state_collector and self.current_text:
-            return self.state_collector.get_state_vector()
-        
-        # Fallback to basic state
         return np.array([
             self.current_text_difficulty,
             self.current_reading_speed,
@@ -69,7 +63,7 @@ class ReadingEnvironment:
             self.highlight_intensity,
             # Add more state components as needed
             len(self.reading_sessions),
-            np.mean(self.user_feedback_history) if self.user_feedback_history else 0.5,
+            np.mean([f.get('score', 0.5) for f in self.user_feedback_history]) if self.user_feedback_history else 0.5,
             # ... more state features
         ] + [0.0] * (self.state_size - 9))  # Pad to state_size
     
@@ -380,15 +374,11 @@ class ReadingEnvironment:
     def set_text_content(self, text_content: str):
         """Set text content for state collection"""
         self.current_text = text_content
-        if self.state_collector:
-            # Update state collector with new text
-            asyncio.create_task(self.state_collector.collect_reading_state(text_content))
     
-    async def collect_state_async(self, text_content: str, user_commands: List[str] = None):
-        """Asynchronously collect state using MCP tools"""
-        if self.state_collector:
-            return await self.state_collector.collect_reading_state(text_content, user_commands)
-        return {}
+    def collect_state_from_data(self, state_data: Dict[str, Any]):
+        """Collect state from provided data"""
+        self.current_state = state_data
+        return state_data
     
     def update_text_progress(self, progress: float):
         """Update text reading progress (0.0 to 1.0)"""

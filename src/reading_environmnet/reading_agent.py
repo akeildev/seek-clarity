@@ -83,7 +83,7 @@ class ReadingAgent:
         self._update_state_from_query(query_data)
         
         # Collect state for A2C
-        state_dict = await self._collect_state(query_data)
+        state_dict = self._collect_state(query_data)
         
         # Get A2C recommendations
         recommendations = self._get_recommendations(state_dict)
@@ -149,7 +149,7 @@ class ReadingAgent:
                 'preferred_highlighting': data.preferred_highlighting
             })
     
-    async def _collect_state(self, data: QueryData) -> Dict[str, float]:
+    def _collect_state(self, data: QueryData) -> Dict[str, float]:
         """Collect state information for A2C agent"""
         return {
             'text_difficulty': data.text_difficulty,
