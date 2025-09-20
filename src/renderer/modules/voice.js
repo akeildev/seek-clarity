@@ -67,12 +67,17 @@ class VoiceManager {
 
         try {
             console.log('[Voice] Starting session...');
+            console.log('[Voice] Electron API available:', !!window.electron);
+            console.log('[Voice] Voice API available:', !!window.electron?.voice);
 
             const response = await window.electron.voice.start();
+            console.log('[Voice] Start response:', response);
 
             if (response.success) {
                 this.connectionInfo = response;
+                console.log('[Voice] Connecting LiveKit with:', { url: response.url, room: response.roomName });
                 await this.livekitClient.connect(response);
+                console.log('[Voice] LiveKit connected successfully');
                 return true;
             } else {
                 console.error('[Voice] Failed to start:', response.error);

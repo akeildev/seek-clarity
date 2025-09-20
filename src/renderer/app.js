@@ -18,11 +18,12 @@ class ClarityApp {
     }
 
     async init() {
+        console.log('[App] Starting initialization...');
         this.setupEventListeners();
         this.initVisualizer();
         this.initControls();
         await this.initVoice();
-        console.log('[App] Initialized');
+        console.log('[App] Initialized with elements:', Object.keys(this.elements).map(k => k + ': ' + !!this.elements[k]).join(', '));
     }
 
     async initVoice() {
@@ -60,8 +61,15 @@ class ClarityApp {
     }
 
     setupEventListeners() {
+        console.log('[App] Setting up event listeners');
         if (this.elements.voiceButton) {
-            this.elements.voiceButton.addEventListener('click', () => this.toggleVoice());
+            this.elements.voiceButton.addEventListener('click', () => {
+                console.log('[App] Voice button clicked');
+                this.toggleVoice();
+            });
+            console.log('[App] Voice button listener attached');
+        } else {
+            console.warn('[App] Voice button not found!');
         }
 
         if (this.elements.muteButton) {
@@ -69,7 +77,13 @@ class ClarityApp {
         }
 
         if (this.elements.closeButton) {
-            this.elements.closeButton.addEventListener('click', () => this.close());
+            this.elements.closeButton.addEventListener('click', () => {
+                console.log('[App] Close button clicked');
+                this.close();
+            });
+            console.log('[App] Close button listener attached');
+        } else {
+            console.warn('[App] Close button not found!');
         }
     }
 
@@ -179,5 +193,8 @@ class ClarityApp {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('[App] DOMContentLoaded - Starting ClarityApp');
     window.clarityApp = new ClarityApp();
+    console.log('[App] Window size:', window.innerWidth, 'x', window.innerHeight);
+    console.log('[App] Window location:', window.location.href);
 });

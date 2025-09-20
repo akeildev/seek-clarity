@@ -1,0 +1,80 @@
+{
+  "servers": {
+    "filesystem": {
+      "command": "mcp",
+      "args": ["--server", "filesystem"],
+      "description": "File system operations"
+    },
+    "web": {
+      "command": "mcp",
+      "args": ["--server", "web"],
+      "description": "Web browsing and search"
+    },
+    "system": {
+      "command": "mcp",
+      "args": ["--server", "system"],
+      "description": "System commands and operations"
+    }
+  },
+  "tools": [
+    {
+      "name": "read_file",
+      "description": "Read contents of a file",
+      "server": "filesystem",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "description": "Path to the file to read"
+        }
+      }
+    },
+    {
+      "name": "write_file",
+      "description": "Write content to a file",
+      "server": "filesystem",
+      "parameters": {
+        "path": {
+          "type": "string",
+          "description": "Path to the file to write"
+        },
+        "content": {
+          "type": "string",
+          "description": "Content to write to the file"
+        }
+      }
+    },
+    {
+      "name": "search_web",
+      "description": "Search the web for information",
+      "server": "web",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "Search query"
+        }
+      }
+    },
+    {
+      "name": "open_url",
+      "description": "Open a URL in the browser",
+      "server": "web",
+      "parameters": {
+        "url": {
+          "type": "string",
+          "description": "URL to open"
+        }
+      }
+    },
+    {
+      "name": "run_command",
+      "description": "Run a system command",
+      "server": "system",
+      "parameters": {
+        "command": {
+          "type": "string",
+          "description": "Command to execute"
+        }
+      }
+    }
+  ]
+}

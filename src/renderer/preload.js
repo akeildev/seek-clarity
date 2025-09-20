@@ -1,5 +1,14 @@
 const { contextBridge, ipcRenderer } = require('electron');
-const { IPC_CHANNELS } = require('../shared/constants');
+
+const IPC_CHANNELS = {
+    APP_CLOSE: 'app:close',
+    VOICE_START: 'voice:start',
+    VOICE_STOP: 'voice:stop',
+    VOICE_STATUS: 'voice:status',
+    VOICE_ERROR: 'voice:error',
+    SETTINGS_GET: 'settings:get',
+    SETTINGS_SET: 'settings:set'
+};
 
 contextBridge.exposeInMainWorld('electron', {
     app: {

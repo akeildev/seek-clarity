@@ -112,7 +112,11 @@ class LiveKitClient {
         if (!this.audioTrack) return;
 
         this.isMuted = !this.isMuted;
-        await this.audioTrack.setMuted(this.isMuted);
+        if (this.isMuted) {
+            await this.audioTrack.mute();
+        } else {
+            await this.audioTrack.unmute();
+        }
 
         console.log('[LiveKit] Mute status:', this.isMuted);
         this.emit('muteChanged', { isMuted: this.isMuted });

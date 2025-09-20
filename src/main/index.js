@@ -40,6 +40,7 @@ async function initializeServices() {
 }
 
 function createWindow() {
+    console.log('[Window] Creating main window...');
     mainWindow = new BrowserWindow({
         width: 240,
         height: 60,
@@ -63,6 +64,7 @@ function createWindow() {
     });
 
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+    console.log('[Window] Loading HTML from:', path.join(__dirname, '../renderer/index.html'));
 
     if (process.platform === 'darwin') {
         mainWindow.setVisibleOnAllWorkspaces(true, {
@@ -94,17 +96,39 @@ function createWindow() {
     });
 
     mainWindow.on('closed', () => {
+        console.log('[Window] Main window closed');
         mainWindow = null;
+    });
+
+    mainWindow.on('ready-to-show', () => {
+        console.log('[Window] Ready to show');
+        const bounds = mainWindow.getBounds();
+        console.log('[Window] Position:', bounds.x, bounds.y, 'Size:', bounds.width, 'x', bounds.height);
     });
 
     if (process.argv.includes('--dev')) {
         mainWindow.webContents.openDevTools({ mode: 'detach' });
     }
+
+    mainWindow.webContents.on('did-finish-load', () => {
+        console.log('[Window] Page loaded successfully');
+    });
+
+    mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
+        console.error('[Window] Failed to load:', errorCode, errorDescription);
+    });
+
+    mainWindow.webContents.on('console-message', (event, level, message) => {
+        console.log('[Renderer]', message);
+    });
 }
 
 app.whenReady().then(async () => {
-    await initializeServices();
+    console.log('[App] Electron ready');
+    const initialized = await initializeServices();
+    console.log('[App] Services initialized:', initialized);
     createWindow();
+    console.log('[App] Window created');
 
     app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) {
