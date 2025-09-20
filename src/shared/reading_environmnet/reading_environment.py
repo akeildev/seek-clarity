@@ -27,6 +27,10 @@ class ReadingEnvironment:
         self.user_feedback_history = []
         self.current_text = ""
         
+        # Additional attributes for reward calculation
+        self.text_progress = 0.0
+        self.session_start_time = None
+        
     def reset(self):
         """Reset environment to initial state"""
         # Initialize with default reading state
@@ -86,34 +90,277 @@ class ReadingEnvironment:
         # Add more action mappings as needed
     
     def _calculate_reward(self):
-
-        """Calculate reward based on user behavior
-
-        THIS IS GOING TO NEED A LOT OF WORK
-        
-        """
-        # This is where you'd integrate with real user feedback
-        # For now, simulate based on reading parameters
-        
+        """Calculate comprehensive reward based on reading assistance effectiveness"""
         reward = 0.0
         
-        # Reward for optimal reading speed
-        if 0.8 <= self.current_reading_speed <= 1.2:
-            reward += 0.5
+        # 1. READING SPEED OPTIMIZATION (0-1.0 points)
+        reward += self._calculate_speed_reward()
         
-        # Reward for good pause frequency
-        if 0.2 <= self.pause_frequency <= 0.6:
-            reward += 0.3
+        # 2. PAUSE FREQUENCY OPTIMIZATION (0-0.8 points)
+        reward += self._calculate_pause_reward()
         
-        # Reward for user engagement
-        if self.user_engagement > 0.7:
-            reward += 0.8
+        # 3. HIGHLIGHT INTENSITY OPTIMIZATION (0-0.6 points)
+        reward += self._calculate_highlight_reward()
         
-        # Penalty for poor comprehension
-        if self.user_comprehension < 0.3:
-            reward -= 0.5
+        # 4. USER ENGAGEMENT REWARD (0-1.2 points)
+        reward += self._calculate_engagement_reward()
         
-        return reward
+        # 5. COMPREHENSION REWARD (0-1.5 points)
+        reward += self._calculate_comprehension_reward()
+        
+        # 6. TEXT DIFFICULTY ADAPTATION (0-0.8 points)
+        reward += self._calculate_difficulty_adaptation_reward()
+        
+        # 7. SESSION CONTINUITY REWARD (0-0.5 points)
+        reward += self._calculate_continuity_reward()
+        
+        # 8. USER PREFERENCE ALIGNMENT (0-0.6 points)
+        reward += self._calculate_preference_reward()
+        
+        # 9. EFFICIENCY REWARD (0-0.4 points)
+        reward += self._calculate_efficiency_reward()
+        
+        # 10. PENALTY FOR EXTREME SETTINGS (-0.3 to 0 points)
+        reward += self._calculate_extreme_penalty()
+        
+        # Normalize to reasonable range (-1.0 to 5.0)
+        return max(-1.0, min(5.0, reward))
+    
+    def _calculate_speed_reward(self):
+        """Reward for optimal reading speed based on text difficulty and user profile"""
+        # Base speed reward
+        speed = self.current_reading_speed
+        
+        # Optimal speed depends on text difficulty
+        if hasattr(self, 'current_text_difficulty'):
+            difficulty = self.current_text_difficulty
+            # More difficult text should be read slower
+            optimal_speed = 1.2 - (difficulty * 0.4)  # 0.8 to 1.2 range
+        else:
+            optimal_speed = 1.0
+        
+        # Calculate distance from optimal
+        speed_diff = abs(speed - optimal_speed)
+        
+        # Reward decreases as distance from optimal increases
+        if speed_diff <= 0.1:
+            return 1.0  # Perfect speed
+        elif speed_diff <= 0.2:
+            return 0.8  # Good speed
+        elif speed_diff <= 0.3:
+            return 0.5  # Acceptable speed
+        else:
+            return max(0.0, 0.5 - speed_diff)  # Decreasing reward
+    
+    def _calculate_pause_reward(self):
+        """Reward for appropriate pause frequency"""
+        pause_freq = self.pause_frequency
+        
+        # Optimal pause frequency depends on text complexity and user comprehension
+        if hasattr(self, 'current_text_difficulty') and hasattr(self, 'user_comprehension'):
+            difficulty = self.current_text_difficulty
+            comprehension = self.user_comprehension
+            
+            # More difficult text and lower comprehension need more pauses
+            optimal_pause = 0.2 + (difficulty * 0.3) + ((1 - comprehension) * 0.2)
+            optimal_pause = min(0.7, optimal_pause)  # Cap at 0.7
+        else:
+            optimal_pause = 0.3
+        
+        # Calculate reward based on distance from optimal
+        pause_diff = abs(pause_freq - optimal_pause)
+        
+        if pause_diff <= 0.1:
+            return 0.8
+        elif pause_diff <= 0.2:
+            return 0.6
+        elif pause_diff <= 0.3:
+            return 0.3
+        else:
+            return max(0.0, 0.3 - pause_diff)
+    
+    def _calculate_highlight_reward(self):
+        """Reward for appropriate highlight intensity"""
+        highlight = self.highlight_intensity
+        
+        # Optimal highlighting depends on text type and user engagement
+        if hasattr(self, 'current_text_difficulty') and hasattr(self, 'user_engagement'):
+            difficulty = self.current_text_difficulty
+            engagement = self.user_engagement
+            
+            # More difficult text and lower engagement need more highlighting
+            optimal_highlight = 0.3 + (difficulty * 0.4) + ((1 - engagement) * 0.2)
+            optimal_highlight = min(0.9, optimal_highlight)  # Cap at 0.9
+        else:
+            optimal_highlight = 0.5
+        
+        # Calculate reward
+        highlight_diff = abs(highlight - optimal_highlight)
+        
+        if highlight_diff <= 0.15:
+            return 0.6
+        elif highlight_diff <= 0.25:
+            return 0.4
+        elif highlight_diff <= 0.35:
+            return 0.2
+        else:
+            return max(0.0, 0.2 - highlight_diff)
+    
+    def _calculate_engagement_reward(self):
+        """Reward for maintaining user engagement"""
+        engagement = self.user_engagement
+        
+        # Direct engagement reward
+        if engagement >= 0.9:
+            return 1.2
+        elif engagement >= 0.8:
+            return 1.0
+        elif engagement >= 0.7:
+            return 0.8
+        elif engagement >= 0.6:
+            return 0.5
+        elif engagement >= 0.4:
+            return 0.2
+        else:
+            return 0.0
+    
+    def _calculate_comprehension_reward(self):
+        """Reward for maintaining comprehension"""
+        comprehension = self.user_comprehension
+        
+        # Comprehension is critical - higher weight
+        if comprehension >= 0.9:
+            return 1.5
+        elif comprehension >= 0.8:
+            return 1.2
+        elif comprehension >= 0.7:
+            return 1.0
+        elif comprehension >= 0.6:
+            return 0.7
+        elif comprehension >= 0.5:
+            return 0.4
+        elif comprehension >= 0.3:
+            return 0.1
+        else:
+            return -0.5  # Penalty for very low comprehension
+    
+    def _calculate_difficulty_adaptation_reward(self):
+        """Reward for adapting to text difficulty"""
+        if not hasattr(self, 'current_text_difficulty'):
+            return 0.0
+        
+        difficulty = self.current_text_difficulty
+        speed = self.current_reading_speed
+        pause_freq = self.pause_frequency
+        
+        # Check if settings adapt to difficulty
+        adaptation_score = 0.0
+        
+        # Speed should decrease with difficulty
+        if difficulty > 0.7 and speed < 1.0:
+            adaptation_score += 0.3
+        elif difficulty < 0.3 and speed > 1.0:
+            adaptation_score += 0.3
+        
+        # Pause frequency should increase with difficulty
+        if difficulty > 0.7 and pause_freq > 0.4:
+            adaptation_score += 0.3
+        elif difficulty < 0.3 and pause_freq < 0.4:
+            adaptation_score += 0.3
+        
+        # Highlight intensity should increase with difficulty
+        if hasattr(self, 'current_highlight_intensity'):
+            highlight = self.current_highlight_intensity
+            if difficulty > 0.7 and highlight > 0.6:
+                adaptation_score += 0.2
+            elif difficulty < 0.3 and highlight < 0.6:
+                adaptation_score += 0.2
+        
+        return min(0.8, adaptation_score)
+    
+    def _calculate_continuity_reward(self):
+        """Reward for maintaining reading session continuity"""
+        if not self.reading_sessions:
+            return 0.0
+        
+        # Reward for longer sessions (up to a point)
+        session_length = len(self.reading_sessions)
+        
+        if session_length >= 20:  # Good session length
+            return 0.5
+        elif session_length >= 10:
+            return 0.3
+        elif session_length >= 5:
+            return 0.1
+        else:
+            return 0.0
+    
+    def _calculate_preference_reward(self):
+        """Reward for aligning with user preferences"""
+        if not self.user_feedback_history:
+            return 0.0
+        
+        # Analyze recent feedback for preferences
+        recent_feedback = self.user_feedback_history[-5:]  # Last 5 feedback items
+        
+        preference_score = 0.0
+        for feedback in recent_feedback:
+            if 'preferred_speed' in feedback:
+                speed_diff = abs(self.current_reading_speed - feedback['preferred_speed'])
+                if speed_diff <= 0.1:
+                    preference_score += 0.2
+            
+            if 'preferred_pauses' in feedback:
+                pause_diff = abs(self.pause_frequency - feedback['preferred_pauses'])
+                if pause_diff <= 0.1:
+                    preference_score += 0.2
+            
+            if 'preferred_highlighting' in feedback:
+                highlight_diff = abs(self.highlight_intensity - feedback['preferred_highlighting'])
+                if highlight_diff <= 0.1:
+                    preference_score += 0.2
+        
+        return min(0.6, preference_score)
+    
+    def _calculate_efficiency_reward(self):
+        """Reward for efficient reading (good progress with good comprehension)"""
+        if not hasattr(self, 'text_progress'):
+            return 0.0
+        
+        progress = getattr(self, 'text_progress', 0.0)
+        comprehension = self.user_comprehension
+        
+        # Efficiency = progress * comprehension
+        efficiency = progress * comprehension
+        
+        if efficiency >= 0.8:
+            return 0.4
+        elif efficiency >= 0.6:
+            return 0.3
+        elif efficiency >= 0.4:
+            return 0.2
+        elif efficiency >= 0.2:
+            return 0.1
+        else:
+            return 0.0
+    
+    def _calculate_extreme_penalty(self):
+        """Penalty for extreme settings that might be uncomfortable"""
+        penalty = 0.0
+        
+        # Penalty for very slow or very fast reading
+        if self.current_reading_speed < 0.6 or self.current_reading_speed > 1.4:
+            penalty -= 0.1
+        
+        # Penalty for too many or too few pauses
+        if self.pause_frequency < 0.05 or self.pause_frequency > 0.9:
+            penalty -= 0.1
+        
+        # Penalty for extreme highlighting
+        if self.highlight_intensity < 0.05 or self.highlight_intensity > 0.95:
+            penalty -= 0.1
+        
+        return penalty
     
     def _is_session_complete(self):
         """Check if reading session is complete"""
@@ -142,3 +389,51 @@ class ReadingEnvironment:
         if self.state_collector:
             return await self.state_collector.collect_reading_state(text_content, user_commands)
         return {}
+    
+    def update_text_progress(self, progress: float):
+        """Update text reading progress (0.0 to 1.0)"""
+        self.text_progress = max(0.0, min(1.0, progress))
+    
+    def start_session(self):
+        """Start a new reading session"""
+        import time
+        self.session_start_time = time.time()
+        self.reading_sessions.append({
+            'start_time': self.session_start_time,
+            'text_difficulty': getattr(self, 'current_text_difficulty', 0.5),
+            'initial_settings': {
+                'reading_speed': self.current_reading_speed,
+                'pause_frequency': self.pause_frequency,
+                'highlight_intensity': self.highlight_intensity
+            }
+        })
+    
+    def end_session(self):
+        """End current reading session"""
+        if self.session_start_time:
+            import time
+            session_duration = time.time() - self.session_start_time
+            if self.reading_sessions:
+                self.reading_sessions[-1]['duration'] = session_duration
+                self.reading_sessions[-1]['final_settings'] = {
+                    'reading_speed': self.current_reading_speed,
+                    'pause_frequency': self.pause_frequency,
+                    'highlight_intensity': self.highlight_intensity
+                }
+            self.session_start_time = None
+    
+    def get_reward_breakdown(self):
+        """Get detailed breakdown of reward components for debugging"""
+        return {
+            'speed_reward': self._calculate_speed_reward(),
+            'pause_reward': self._calculate_pause_reward(),
+            'highlight_reward': self._calculate_highlight_reward(),
+            'engagement_reward': self._calculate_engagement_reward(),
+            'comprehension_reward': self._calculate_comprehension_reward(),
+            'difficulty_adaptation_reward': self._calculate_difficulty_adaptation_reward(),
+            'continuity_reward': self._calculate_continuity_reward(),
+            'preference_reward': self._calculate_preference_reward(),
+            'efficiency_reward': self._calculate_efficiency_reward(),
+            'extreme_penalty': self._calculate_extreme_penalty(),
+            'total_reward': self._calculate_reward()
+        }
