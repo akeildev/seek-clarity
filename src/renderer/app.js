@@ -13,14 +13,44 @@ class ClarityApp {
         };
 
         this.visualizer = null;
+        this.voiceManager = null;
         this.init();
     }
 
-    init() {
+    async init() {
         this.setupEventListeners();
         this.initVisualizer();
         this.initControls();
+        await this.initVoice();
         console.log('[App] Initialized');
+    }
+
+    async initVoice() {
+        if (window.VoiceManager) {
+            this.voiceManager = new window.VoiceManager();
+            await this.voiceManager.initialize();
+
+            if (this.visualizer) {
+                this.voiceManager.setVisualizer(this.visualizer);
+            }
+
+            this.voiceManager.on('connected', () => {
+                this.updateUI(true, false);
+            });
+
+            this.voiceManager.on('disconnected', () => {
+                this.updateUI(false, false);
+            });
+
+            this.voiceManager.on('muteChanged', (data) => {
+                this.updateUI(this.state.isActive, data.isMuted);
+            });
+
+            this.voiceManager.on('error', (error) => {
+                console.error('[App] Voice error:', error);
+                this.updateUI(false, false);
+            });
+        }
     }
 
     initControls() {
@@ -52,44 +82,43 @@ class ClarityApp {
         }
     }
 
-    toggleVoice() {
+    async toggleVoice() {
         this.state.isActive = !this.state.isActive;
 
         if (this.state.isActive) {
-            this.elements.voiceButton.classList.add('active');
-            this.startVoiceSession();
+            await this.startVoiceSession();
         } else {
-            this.elements.voiceButton.classList.remove('active');
-            this.stopVoiceSession();
+            await this.stopVoiceSession();
         }
     }
 
-    toggleMute() {
-        this.state.isMuted = !this.state.isMuted;
-
-        if (this.state.isMuted) {
-            this.elements.muteButton.classList.add('muted');
-        } else {
-            this.elements.muteButton.classList.remove('muted');
+    async toggleMute() {
+        if (this.voiceManager && this.state.isActive) {
+            const isMuted = await this.voiceManager.toggleMute();
+            this.updateUI(this.state.isActive, isMuted);
         }
-
-        console.log('[App] Mute:', this.state.isMuted);
     }
 
-    startVoiceSession() {
+    async startVoiceSession() {
         console.log('[App] Starting voice session');
 
         if (this.visualizer) {
             this.visualizer.start();
-            this.simulateAudioLevels();
         }
 
-        if (window.electron?.voice) {
-            window.electron.voice.start();
+        if (this.voiceManager) {
+            const success = await this.voiceManager.start();
+            if (success) {
+                this.updateUI(true, false);
+            } else {
+                this.updateUI(false, false);
+            }
+        } else {
+            this.simulateAudioLevels();
         }
     }
 
-    stopVoiceSession() {
+    async stopVoiceSession() {
         console.log('[App] Stopping voice session');
 
         if (this.visualizer) {
@@ -101,8 +130,27 @@ class ClarityApp {
             this.animationInterval = null;
         }
 
-        if (window.electron?.voice) {
-            window.electron.voice.stop();
+        if (this.voiceManager) {
+            await this.voiceManager.stop();
+        }
+
+        this.updateUI(false, false);
+    }
+
+    updateUI(isActive, isMuted) {
+        this.state.isActive = isActive;
+        this.state.isMuted = isMuted;
+
+        if (isActive) {
+            this.elements.voiceButton.classList.add('active');
+        } else {
+            this.elements.voiceButton.classList.remove('active');
+        }
+
+        if (isMuted) {
+            this.elements.muteButton.classList.add('muted');
+        } else {
+            this.elements.muteButton.classList.remove('muted');
         }
     }
 
