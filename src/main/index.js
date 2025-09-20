@@ -2,21 +2,34 @@ require('dotenv').config();
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const LiveKitService = require('./services/livekit');
+const settingsService = require('./services/settings');
+const IPCManager = require('../shared/ipc');
 const { IPC_CHANNELS } = require('../shared/constants');
 
 let mainWindow;
 let services = {};
+let ipcManager;
 
 async function initializeServices() {
     try {
         console.log('[App] Initializing services...');
 
+        services.settings = settingsService;
+        await services.settings.initialize();
+
+        const config = services.settings.getLiveKitConfig();
         services.livekit = new LiveKitService();
+        services.livekit.config = config;
         const livekitReady = await services.livekit.initialize();
 
         if (!livekitReady) {
             console.warn('[App] LiveKit service not fully configured');
         }
+
+        services.mainWindow = mainWindow;
+
+        ipcManager = new IPCManager(ipcMain, services);
+        ipcManager.setupHandlers();
 
         console.log('[App] Services initialized');
         return true;
@@ -104,33 +117,6 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit();
     }
-});
-
-ipcMain.handle(IPC_CHANNELS.APP_CLOSE, () => {
-    if (mainWindow) {
-        mainWindow.close();
-    }
-    app.quit();
-});
-
-ipcMain.handle(IPC_CHANNELS.VOICE_START, async () => {
-    if (services.livekit) {
-        return await services.livekit.startSession();
-    }
-    return { success: false, error: 'LiveKit service not available' };
-});
-
-ipcMain.handle(IPC_CHANNELS.VOICE_STOP, async () => {
-    if (services.livekit) {
-        return await services.livekit.stopSession();
-    }
-});
-
-ipcMain.handle(IPC_CHANNELS.VOICE_STATUS, () => {
-    if (services.livekit) {
-        return services.livekit.getRoomInfo();
-    }
-    return { isConnected: false };
 });
 
 module.exports = { mainWindow };
