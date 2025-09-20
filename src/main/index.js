@@ -1,13 +1,36 @@
 require('dotenv').config();
 const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
+const LiveKitService = require('./services/livekit');
+const settingsService = require('./services/settings');
+const IPCManager = require('../shared/ipc');
+const { IPC_CHANNELS } = require('../shared/constants');
 
 let mainWindow;
 let services = {};
+let ipcManager;
 
 async function initializeServices() {
     try {
         console.log('[App] Initializing services...');
+
+        services.settings = settingsService;
+        await services.settings.initialize();
+
+        const config = services.settings.getLiveKitConfig();
+        services.livekit = new LiveKitService();
+        services.livekit.config = config;
+        const livekitReady = await services.livekit.initialize();
+
+        if (!livekitReady) {
+            console.warn('[App] LiveKit service not fully configured');
+        }
+
+        services.mainWindow = mainWindow;
+
+        ipcManager = new IPCManager(ipcMain, services);
+        ipcManager.setupHandlers();
+
         console.log('[App] Services initialized');
         return true;
     } catch (error) {
@@ -23,6 +46,7 @@ function createWindow() {
         x: 20,
         y: 20,
         webPreferences: {
+            preload: path.join(__dirname, '../renderer/preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
             webSecurity: true
@@ -92,12 +116,6 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit();
-    }
-});
-
-ipcMain.handle('app:close', () => {
-    if (mainWindow) {
-        mainWindow.close();
     }
 });
 
