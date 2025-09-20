@@ -1,0 +1,251 @@
+@keyframes liquidFlow {
+    0%, 100% {
+        transform: translateX(0) translateY(0) scale(1);
+    }
+    25% {
+        transform: translateX(-5%) translateY(-3%) scale(1.02);
+    }
+    50% {
+        transform: translateX(3%) translateY(2%) scale(0.98);
+    }
+    75% {
+        transform: translateX(-2%) translateY(-1%) scale(1.01);
+    }
+}
+
+@keyframes waveMotion {
+    0% {
+        d: path("M0,20 Q10,15 20,20 T40,20 T60,20 T80,20 T100,20 L100,40 L0,40 Z");
+    }
+    25% {
+        d: path("M0,20 Q10,25 20,20 T40,20 T60,20 T80,20 T100,20 L100,40 L0,40 Z");
+    }
+    50% {
+        d: path("M0,20 Q10,15 20,20 T40,20 T60,20 T80,20 T100,20 L100,40 L0,40 Z");
+    }
+    75% {
+        d: path("M0,20 Q10,18 20,20 T40,20 T60,20 T80,20 T100,20 L100,40 L0,40 Z");
+    }
+    100% {
+        d: path("M0,20 Q10,15 20,20 T40,20 T60,20 T80,20 T100,20 L100,40 L0,40 Z");
+    }
+}
+
+@keyframes ripple {
+    0% {
+        transform: scale(0.8);
+        opacity: 1;
+    }
+    100% {
+        transform: scale(2);
+        opacity: 0;
+    }
+}
+
+@keyframes droplet {
+    0% {
+        transform: translateY(-100%) scale(0);
+        opacity: 0;
+    }
+    10% {
+        transform: translateY(-80%) scale(0.3);
+        opacity: 0.7;
+    }
+    50% {
+        transform: translateY(0) scale(1);
+        opacity: 1;
+    }
+    90% {
+        transform: translateY(80%) scale(0.3);
+        opacity: 0.7;
+    }
+    100% {
+        transform: translateY(100%) scale(0);
+        opacity: 0;
+    }
+}
+
+.liquid-container {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+.liquid-wave {
+    position: absolute;
+    width: 120%;
+    height: 100%;
+    left: -10%;
+    background: linear-gradient(
+        180deg,
+        rgba(147, 197, 253, 0.1) 0%,
+        rgba(147, 197, 253, 0.05) 50%,
+        transparent 100%
+    );
+    animation: liquidFlow 8s ease-in-out infinite;
+    filter: blur(1px);
+}
+
+.liquid-wave:nth-child(2) {
+    animation-delay: -2s;
+    opacity: 0.5;
+    filter: blur(2px);
+}
+
+.liquid-wave:nth-child(3) {
+    animation-delay: -4s;
+    opacity: 0.3;
+    filter: blur(3px);
+}
+
+.glass-refraction {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(
+        ellipse at center,
+        rgba(255, 255, 255, 0.1) 0%,
+        transparent 70%
+    );
+    mix-blend-mode: overlay;
+    pointer-events: none;
+}
+
+.glass-distortion {
+    position: absolute;
+    width: 150%;
+    height: 150%;
+    top: -25%;
+    left: -25%;
+    background: repeating-conic-gradient(
+        from 0deg at 50% 50%,
+        transparent 0deg,
+        rgba(255, 255, 255, 0.03) 5deg,
+        transparent 10deg
+    );
+    animation: shimmer 20s linear infinite;
+    pointer-events: none;
+}
+
+.audio-ripple {
+    position: absolute;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: radial-gradient(
+        circle,
+        rgba(147, 197, 253, 0.4),
+        transparent 70%
+    );
+    transform: scale(0);
+    pointer-events: none;
+}
+
+.audio-ripple.active {
+    animation: ripple 1s ease-out;
+}
+
+.liquid-bubble {
+    position: absolute;
+    width: 6px;
+    height: 6px;
+    background: radial-gradient(
+        circle at 30% 30%,
+        rgba(255, 255, 255, 0.8),
+        rgba(147, 197, 253, 0.4)
+    );
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    animation: droplet 4s ease-in-out infinite;
+}
+
+.wave-visualizer {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    overflow: hidden;
+}
+
+.wave-path {
+    stroke: none;
+    fill: url(#waveGradient);
+    opacity: 0.8;
+    filter: blur(0.5px);
+}
+
+.wave-glow {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(
+        ellipse at center,
+        rgba(147, 197, 253, 0.2),
+        transparent 60%
+    );
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.wave-glow.active {
+    opacity: 1;
+}
+
+.liquid-transition {
+    transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.liquid-smooth {
+    transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+.glass-shine {
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+        105deg,
+        transparent 40%,
+        rgba(255, 255, 255, 0.1) 45%,
+        rgba(255, 255, 255, 0.05) 50%,
+        transparent 55%
+    );
+    animation: shine 3s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes shine {
+    0% {
+        transform: translateX(-100%) translateY(-100%);
+    }
+    100% {
+        transform: translateX(100%) translateY(100%);
+    }
+}
+
+.liquid-morph {
+    animation: liquidMorph 6s ease-in-out infinite;
+}
+
+@keyframes liquidMorph {
+    0%, 100% {
+        border-radius: 40px;
+        transform: scale(1);
+    }
+    25% {
+        border-radius: 38px 42px 42px 38px;
+        transform: scale(1.01);
+    }
+    50% {
+        border-radius: 42px 38px 38px 42px;
+        transform: scale(0.99);
+    }
+    75% {
+        border-radius: 38px 42px 38px 42px;
+        transform: scale(1.005);
+    }
+}
