@@ -7,8 +7,10 @@ import asyncio
 import json
 import logging
 import subprocess
+import os
 from typing import Dict, Any, List, Optional
 from pathlib import Path
+# from mcp import client  # Optional - only if using Python MCP client
 
 logger = logging.getLogger("mcp-router")
 

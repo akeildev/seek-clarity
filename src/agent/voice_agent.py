@@ -26,6 +26,8 @@ from livekit.agents.voice import AgentSession
 from livekit.plugins import openai, elevenlabs, silero
 from openai.types.beta.realtime.session import InputAudioTranscription
 from dotenv import load_dotenv
+from pathlib import Path
+from mcp_router import McpToolRouter
 
 # Load environment variables
 load_dotenv()
@@ -54,6 +56,11 @@ class ClarityVoiceAgent:
         self.context: Optional[JobContext] = None
         self.room_name: Optional[str] = None
         self.participant_identity: Optional[str] = None
+
+        # Initialize MCP router for tool access
+        config_path = Path(__file__).parent / "mcp.config.json"
+        self.mcp_router = McpToolRouter(config_path)
+        logger.info(f"Loaded {len(self.mcp_router.list_tools())} MCP tools")
 
     async def start(self, ctx: JobContext):
         """Initialize and start the agent session"""
@@ -171,7 +178,7 @@ class ClarityVoiceAgent:
 
     async def _send_greeting(self):
         """Send initial greeting"""
-        greeting = "Hello! I'm Clarity, your AI assistant. How can I help you today?"
+        greeting = "Hello! I'm Clarity, your AI assistant. I can help you create notes, search information, and manage tasks. How can I help you today?"
         if self.session:
             logger.info("Sending greeting message...")
             try:
@@ -180,9 +187,25 @@ class ClarityVoiceAgent:
             except Exception as e:
                 logger.error(f"Failed to send greeting: {e}")
 
+    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
+        """Execute an MCP tool and return the result"""
+        logger.info(f"Executing tool: {tool_name} with args: {arguments}")
+
+        try:
+            # Execute the tool through MCP router
+            result = await self.mcp_router.execute_tool(tool_name, arguments)
+            logger.info(f"Tool execution result: {result}")
+            return str(result)
+        except Exception as e:
+            logger.error(f"Tool execution failed: {e}")
+            return f"I encountered an error: {str(e)}"
+
     def _get_instructions(self) -> str:
         """Get system instructions for the AI"""
-        return """You are Clarity, a helpful and friendly AI assistant.
+        tools_list = "\n".join([f"- {tool.name}: {tool.description}"
+                                for tool in self.mcp_router.list_tools()[:5]])
+
+        return f"""You are Clarity, a helpful and friendly AI assistant with access to tools.
 
 Your personality:
 - Be conversational and natural
@@ -195,6 +218,16 @@ Your capabilities:
 - Help with analysis and problem-solving
 - Provide creative assistance
 - Engage in natural conversation
+- Create and manage notes in the database
+- Search for information you've stored
+- Track tasks and conversations
+
+Available tools:
+{tools_list}
+
+When users ask you to remember something, create a note, or search for information,
+use the appropriate tool to help them. Always confirm when you've successfully
+completed an action.
 
 Always maintain a warm, professional tone while being genuinely helpful."""
 

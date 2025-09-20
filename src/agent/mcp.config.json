@@ -1,5 +1,10 @@
 {
   "servers": {
+    "clarity": {
+      "command": "node",
+      "args": ["../mcp/server.js"],
+      "description": "Clarity MCP server with Supabase integration"
+    },
     "filesystem": {
       "command": "mcp",
       "args": ["--server", "filesystem"],
@@ -17,6 +22,41 @@
     }
   },
   "tools": [
+    {
+      "name": "create_note",
+      "description": "Create a new note in the database",
+      "server": "clarity",
+      "parameters": {
+        "title": {
+          "type": "string",
+          "description": "Title of the note"
+        },
+        "content": {
+          "type": "string",
+          "description": "Content of the note"
+        },
+        "category": {
+          "type": "string",
+          "description": "Category of the note",
+          "default": "general"
+        }
+      }
+    },
+    {
+      "name": "search_notes",
+      "description": "Search for notes in the database",
+      "server": "clarity",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "Search query"
+        },
+        "category": {
+          "type": "string",
+          "description": "Filter by category"
+        }
+      }
+    },
     {
       "name": "read_file",
       "description": "Read contents of a file",
