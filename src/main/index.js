@@ -3,6 +3,9 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const LiveKitService = require('./services/livekit');
 const settingsService = require('./services/settings');
+const DesktopCaptureService = require('./services/capture');
+const ScreenshotWebSocketServer = require('./services/websocket');
+const AppleScriptService = require('./services/applescript');
 const IPCManager = require('../shared/ipc');
 const { IPC_CHANNELS } = require('../shared/constants');
 
@@ -25,7 +28,25 @@ async function initializeServices() {
             console.warn('[App] LiveKit service not fully configured');
         }
 
+        // Initialize screenshot services
+        services.capture = new DesktopCaptureService();
+
+        // Initialize AppleScript service
+        services.applescript = new AppleScriptService();
+        await services.applescript.initialize();
+
+        // Initialize WebSocket with both services
+        services.websocket = new ScreenshotWebSocketServer(services.capture, services.applescript);
+
         services.mainWindow = mainWindow;
+
+        // Start WebSocket server for screenshot bridge
+        try {
+            services.websocket.start();
+            console.log('[App] Screenshot WebSocket server started');
+        } catch (error) {
+            console.error('[App] Failed to start screenshot WebSocket server:', error);
+        }
 
         ipcManager = new IPCManager(ipcMain, services);
         ipcManager.setupHandlers();
@@ -134,6 +155,18 @@ app.whenReady().then(async () => {
             createWindow();
         }
     });
+});
+
+app.on('before-quit', () => {
+    console.log('[App] Cleaning up services...');
+    if (services.websocket) {
+        try {
+            services.websocket.stop();
+            console.log('[App] Screenshot WebSocket server stopped');
+        } catch (error) {
+            console.error('[App] Error stopping WebSocket server:', error);
+        }
+    }
 });
 
 app.on('window-all-closed', () => {

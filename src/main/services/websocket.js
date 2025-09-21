@@ -3,15 +3,20 @@ const { ipcMain } = require('electron');
 const EventEmitter = require('events');
 
 class ScreenshotWebSocketServer extends EventEmitter {
-  constructor(captureService) {
+  constructor(captureService, applescriptService = null) {
     super();
     this.captureService = captureService;
+    this.applescriptService = applescriptService;
     this.wss = null;
     this.clients = new Set();
     this.port = process.env.SCREENSHOT_WS_PORT || 8765;
     this.isRunning = false;
 
     console.log('[WebSocket] Screenshot WebSocket server initialized');
+  }
+
+  setAppleScriptService(service) {
+    this.applescriptService = service;
   }
 
 
@@ -84,13 +89,25 @@ class ScreenshotWebSocketServer extends EventEmitter {
   }
 
   async handleMessage(ws, message) {
-    const { action, type, payload = {} } = message;
+    const { action, type, payload = {}, params = {} } = message;
 
     // Handle cassette-style action messages
     if (action) {
       switch (action) {
         case 'capture_screenshot':
           await this.handleScreenshotRequest(ws, message);
+          break;
+
+        case 'applescript_execute':
+          await this.handleAppleScriptRequest(ws, params);
+          break;
+
+        case 'create_calendar_event':
+          await this.handleCalendarRequest(ws, params);
+          break;
+
+        case 'create_note':
+          await this.handleNoteRequest(ws, params);
           break;
 
         case 'ping':
@@ -388,6 +405,133 @@ class ScreenshotWebSocketServer extends EventEmitter {
     }
 
     this.isRunning = false;
+  }
+
+  async handleAppleScriptRequest(ws, params) {
+    try {
+      console.log('[WebSocket-AppleScript] ========================================');
+      console.log('[WebSocket-AppleScript] Processing AppleScript request');
+      console.log('[WebSocket-AppleScript]   Code length:', params.code_snippet ? params.code_snippet.length : 0, 'characters');
+      console.log('[WebSocket-AppleScript]   Code preview:', params.code_snippet ? params.code_snippet.substring(0, 200) : 'No code');
+      console.log('[WebSocket-AppleScript] ========================================');
+
+      if (!this.applescriptService) {
+        console.error('[WebSocket-AppleScript] ✗ AppleScript service not available');
+        throw new Error('AppleScript service not available');
+      }
+
+      if (!params.code_snippet) {
+        throw new Error('No AppleScript code provided');
+      }
+
+      // Execute the AppleScript directly
+      console.log('[WebSocket-AppleScript] Executing AppleScript...');
+      const result = await this.applescriptService.executeScript(params.code_snippet);
+
+      console.log('[WebSocket-AppleScript] Result:', result);
+
+      // Send response
+      const response = {
+        success: result.success,
+        output: result.output || '',
+        error: result.error
+      };
+
+      console.log('[WebSocket-AppleScript] Sending response:', response);
+      this.sendMessage(ws, response);
+
+      console.log('[WebSocket-AppleScript] ✓ Request completed');
+
+    } catch (error) {
+      console.error('[WebSocket-AppleScript] AppleScript execution failed:', error);
+      this.sendMessage(ws, {
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async handleCalendarRequest(ws, params) {
+    try {
+      console.log('[WebSocket-Calendar] ========================================');
+      console.log('[WebSocket-Calendar] Processing request');
+      console.log('[WebSocket-Calendar]   Title:', params.title);
+      console.log('[WebSocket-Calendar]   Calendar:', params.calendar);
+      console.log('[WebSocket-Calendar]   Start time:', params.start_time);
+      console.log('[WebSocket-Calendar]   Duration:', params.duration, 'minutes');
+      console.log('[WebSocket-Calendar] ========================================');
+
+      if (!this.applescriptService) {
+        console.error('[WebSocket-Calendar] ✗ AppleScript service not available');
+        throw new Error('AppleScript service not available');
+      }
+
+      // Create calendar event using AppleScript service
+      const eventOptions = {
+        title: params.title,
+        description: params.description || '',
+        calendar: params.calendar || 'Work',
+        startDate: params.start_time === 'now' ? new Date() : new Date(params.start_time),
+        endDate: params.duration ? new Date(Date.now() + params.duration * 60000) : null
+      };
+
+      console.log('[WebSocket-Calendar] Calling AppleScript service with:', eventOptions);
+      const result = await this.applescriptService.createCalendarEvent(eventOptions);
+
+      console.log('[WebSocket-Calendar] AppleScript result:', result);
+
+      // Send response
+      const response = {
+        success: result.success,
+        message: result.output || 'Calendar event created',
+        error: result.error
+      };
+
+      console.log('[WebSocket-Calendar] Sending response:', response);
+      this.sendMessage(ws, response);
+
+      console.log('[WebSocket-Calendar] ✓ Request completed');
+
+    } catch (error) {
+      console.error('[WebSocket] Calendar event creation failed:', error);
+      this.sendMessage(ws, {
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  async handleNoteRequest(ws, params) {
+    try {
+      console.log('[WebSocket] Processing note creation request:', params);
+
+      if (!this.applescriptService) {
+        throw new Error('AppleScript service not available');
+      }
+
+      // Create note using AppleScript service
+      const result = await this.applescriptService.createNote({
+        title: params.title,
+        body: params.body || params.content || '',
+        folder: 'Notes'
+      });
+
+      // Send response
+      this.sendMessage(ws, {
+        success: result.success,
+        message: result.output || 'Note created',
+        error: result.error
+      });
+
+      console.log('[WebSocket] Note created');
+
+    } catch (error) {
+      console.error('[WebSocket] Note creation failed:', error);
+      this.sendMessage(ws, {
+        success: false,
+        error: error.message
+      });
+    }
   }
 
   // Get server status

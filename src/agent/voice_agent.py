@@ -8,6 +8,8 @@ import logging
 import os
 import json
 import uuid
+import time
+import aiohttp
 from typing import Optional, Dict, Any
 from datetime import datetime
 import sys
@@ -19,33 +21,21 @@ from livekit.agents import (
     cli,
     llm,
     RunContext,
-    Agent,
-    JobRequest,
+    function_tool,
 )
 from livekit.agents.voice import AgentSession
 from livekit.plugins import openai, elevenlabs, silero
 from openai.types.beta.realtime.session import InputAudioTranscription
+from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from pathlib import Path
-from mcp_router import McpToolRouter
 
 # Load environment variables
 load_dotenv()
 
-# Configure detailed logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('clarity_agent.log')
-    ]
-)
+# Configure logging (simplified like Cassette)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("clarity-agent")
-
-# Also configure LiveKit logging
-lk_logger = logging.getLogger("livekit")
-lk_logger.setLevel(logging.INFO)
 
 
 class ClarityVoiceAgent:
@@ -56,129 +46,74 @@ class ClarityVoiceAgent:
         self.context: Optional[JobContext] = None
         self.room_name: Optional[str] = None
         self.participant_identity: Optional[str] = None
-
-        # Initialize MCP router for tool access
-        config_path = Path(__file__).parent / "mcp.config.json"
-        self.mcp_router = McpToolRouter(config_path)
-        logger.info(f"Loaded {len(self.mcp_router.list_tools())} MCP tools")
+        self.screenshot_ws_url = "ws://127.0.0.1:8765"
+        self.openai_client = AsyncOpenAI()
+        self._screenshot_cache = None
+        self._screenshot_cache_time = None
 
     async def start(self, ctx: JobContext):
-        """Initialize and start the agent session"""
-        logger.info("="*50)
-        logger.info("Starting Clarity voice agent")
-        logger.info("="*50)
+        """Initialize and start the agent session - simplified like Cassette"""
         self.context = ctx
+        logger.info(f"Starting agent with room: {ctx.room.name}")
 
-        # Extract room and participant info
-        self.room_name = ctx.room.name
-        logger.info(f"Room name: {self.room_name}")
+        # Connect to room first (like Cassette)
+        await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
 
-        participants = list(ctx.room.remote_participants.values())
-        logger.info(f"Participants in room: {len(participants)}")
-        if participants:
-            self.participant_identity = participants[0].identity
-            logger.info(f"Participant joined: {self.participant_identity}")
-        else:
-            logger.warning("No participants found in room yet")
+        # Create agent with instructions and tools (like Cassette)
+        tools = [
+            self.take_screenshot,
+            self.test_screenshot_service,
+            self.applescript_execute,  # Single tool for all macOS automation like Cassette
+        ]
 
-        # Connect to room
-        logger.info("Connecting to LiveKit room...")
-        try:
-            await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
-            logger.info(f"✓ Connected to room: {self.room_name}")
-            logger.info(f"Room connection state: {ctx.room.connection_state}")
-            logger.info(f"Number of participants: {len(list(ctx.room.remote_participants.values()))}")
+        # Import Agent locally like Cassette
+        from livekit.agents import Agent
+        agent = Agent(
+            instructions=self._get_instructions(),
+            tools=tools
+        )
 
-            # Check if this is our target room (rooms starting with "clarity-")
-            if self.room_name.startswith("clarity-"):
-                logger.info(f"✓ Detected target room: {self.room_name}")
-            else:
-                logger.info(f"Room {self.room_name} is not a target room, waiting for target room...")
-
-        except Exception as e:
-            logger.error(f"Failed to connect to room: {e}")
-            raise
-
-        # Get API keys from environment
-        logger.info("Loading API keys from environment...")
-        openai_api_key = os.getenv("OPENAI_API_KEY")
+        # Get ElevenLabs configuration (simplified like Cassette)
         eleven_api_key = os.getenv("ELEVEN_API_KEY") or os.getenv("ELEVENLABS_API_KEY")
         eleven_voice_id = os.getenv("ELEVEN_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
 
-        # Log API key status (masked)
-        if openai_api_key:
-            logger.info(f"✓ OpenAI API key found: sk-...{openai_api_key[-4:]}")
+        if not eleven_api_key:
+            logger.warning("ELEVEN_API_KEY/ELEVENLABS_API_KEY is not set; TTS will likely fail")
         else:
-            logger.error("✗ OPENAI_API_KEY not set")
-            return
+            logger.info(f"ElevenLabs API key detected")
 
-        if eleven_api_key:
-            logger.info(f"✓ ElevenLabs API key found: ...{eleven_api_key[-4:]}")
-            logger.info(f"  Voice ID: {eleven_voice_id}")
-        else:
-            logger.warning("⚠ ElevenLabs API key not set - TTS will be disabled")
-
-        # Create voice session with OpenAI Realtime
-        logger.info("="*50)
-        logger.info("Creating voice session with OpenAI Realtime")
-        logger.info("Configuration:")
-        logger.info("  Model: gpt-4o-realtime-preview")
-        logger.info(f"  TTS: {'ElevenLabs' if eleven_api_key else 'Disabled'}")
-        logger.info("  VAD: Silero")
-        logger.info("="*50)
-
-        try:
-            logger.info("Creating AgentSession with OpenAI Realtime...")
-            self.session = AgentSession(
-                llm=openai.realtime.RealtimeModel(
-                    model="gpt-4o-realtime-preview",
-                    modalities=["text", "audio"],
-                    input_audio_transcription=InputAudioTranscription(
-                        model="whisper-1",
-                        language="en",
-                    ),
+        # Create agent session (simplified like Cassette)
+        self.session = AgentSession(
+            llm=openai.realtime.RealtimeModel(
+                model="gpt-4o-realtime-preview",
+                modalities=["text", "audio"],
+                input_audio_transcription=InputAudioTranscription(
+                    model="whisper-1",
+                    language="en",
                 ),
-                tts=elevenlabs.TTS(
-                    voice_id=eleven_voice_id,
-                    model="eleven_turbo_v2_5",
-                    api_key=eleven_api_key,
-                ) if eleven_api_key else None,
-                vad=silero.VAD.load(
-                    min_speech_duration=0.2,
-                    min_silence_duration=0.5,
-                    activation_threshold=0.5,
-                ),
-            )
-            logger.info("✓ AgentSession created successfully")
+            ),
+            tts=elevenlabs.TTS(
+                voice_id=eleven_voice_id,
+                model="eleven_turbo_v2_5",
+                api_key=eleven_api_key,
+            ) if eleven_api_key else None,
+            vad=silero.VAD.load(
+                min_speech_duration=0.2,
+                min_silence_duration=0.5,
+                activation_threshold=0.5,
+            ),
+        )
 
-            # Create basic Agent with system instructions
-            logger.info("Creating Agent with instructions...")
-            agent = Agent(
-                instructions=self._get_instructions(),
-            )
-            logger.info("✓ Agent created successfully")
+        # Start the session (like Cassette)
+        await self.session.start(agent=agent, room=ctx.room)
+        logger.info("✓ Voice session started successfully")
 
-            # Start the session
-            logger.info("Starting agent session...")
-            try:
-                await self.session.start(agent=agent, room=ctx.room)
-                logger.info("✓ Voice session started successfully")
-                logger.info("Agent is now listening for speech...")
-
-                # Send greeting
-                await self._send_greeting()
-            except Exception as session_error:
-                logger.error(f"Failed to start session: {session_error}")
-                logger.error(f"Session error type: {type(session_error)}")
-                raise
-
-        except Exception as e:
-            logger.error(f"Failed to create/start session: {e}")
-            raise
+        # Send greeting
+        await self._send_greeting()
 
     async def _send_greeting(self):
         """Send initial greeting"""
-        greeting = "Hello! I'm Clarity, your AI assistant. I can help you create notes, search information, and manage tasks. How can I help you today?"
+        greeting = "Hello! I'm Clarity, your AI assistant. I can help you with questions, analysis, and I can see your screen when you ask. How can I help you today?"
         if self.session:
             logger.info("Sending greeting message...")
             try:
@@ -187,146 +122,346 @@ class ClarityVoiceAgent:
             except Exception as e:
                 logger.error(f"Failed to send greeting: {e}")
 
-    async def execute_tool(self, tool_name: str, arguments: Dict[str, Any]) -> str:
-        """Execute an MCP tool and return the result"""
-        logger.info(f"Executing tool: {tool_name} with args: {arguments}")
 
+    @function_tool
+    async def take_screenshot(
+        self,
+        context: RunContext,
+        query: str = "What do you see on the screen?",
+        region: str = "full"
+    ) -> str:
+        """
+        Captures and analyzes a screenshot of the user's screen.
+
+        Args:
+            query: What to analyze or look for in the screenshot
+            region: Screen region to capture ("full", "window", or "selection")
+
+        Returns:
+            Visual analysis of the screenshot
+        """
         try:
-            # Execute the tool through MCP router
-            result = await self.mcp_router.execute_tool(tool_name, arguments)
-            logger.info(f"Tool execution result: {result}")
-            return str(result)
+            # Quick acknowledgment before taking screenshot
+            if self.session and context:
+                try:
+                    await self.session.say("Give me a sec while I take a look.")
+                    logger.info("Sent screenshot acknowledgment")
+                except Exception as e:
+                    logger.warning(f"Could not send acknowledgment: {e}")
+
+            # Check cache (5 second validity) - same as cassette
+            current_time = time.time()
+            if (self._screenshot_cache and
+                self._screenshot_cache_time and
+                current_time - self._screenshot_cache_time < 5):
+                logger.info("Using cached screenshot")
+                screenshot_base64 = self._screenshot_cache
+            else:
+                # Request new screenshot from Electron via WebSocket
+                logger.info(f"Requesting screenshot capture (region: {region})")
+                screenshot_base64 = await self._request_screenshot(region)
+                # Cache it
+                self._screenshot_cache = screenshot_base64
+                self._screenshot_cache_time = current_time
+
+            # Analyze with GPT-4o vision
+            logger.info(f"Analyzing screenshot with query: {query}")
+            analysis = await self._analyze_with_vision(screenshot_base64, query)
+
+            return analysis
+
         except Exception as e:
-            logger.error(f"Tool execution failed: {e}")
-            return f"I encountered an error: {str(e)}"
+            logger.error(f"Screenshot tool error: {e}", exc_info=True)
+            return f"I couldn't capture the screen right now. Error: {str(e)}"
+
+    @function_tool
+    async def test_screenshot_service(
+        self,
+        context: RunContext,
+    ) -> str:
+        """
+        Tests if the screenshot service is working properly.
+
+        Returns:
+            Status of the screenshot service
+        """
+        try:
+            logger.info("Testing screenshot service connection...")
+
+            # Test WebSocket connection
+            timeout = aiohttp.ClientTimeout(total=5)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.ws_connect(self.screenshot_ws_url) as ws:
+                    logger.info("WebSocket connection test successful")
+
+                    # Send a simple ping
+                    await ws.send_json({"action": "ping"})
+                    response = await ws.receive_json()
+                    logger.info(f"Ping response: {response}")
+
+                    return "Screenshot service is working! WebSocket connection successful."
+
+        except Exception as e:
+            logger.error(f"Screenshot service test failed: {e}")
+            return f"Screenshot service test failed: {str(e)}"
+
+    @function_tool
+    async def applescript_execute(
+        self,
+        context: RunContext,
+        code_snippet: str
+    ) -> str:
+        """
+        Execute AppleScript code for macOS automation (calendar, notes, reminders, etc.)
+
+        Args:
+            code_snippet: The AppleScript code to execute
+
+        Returns:
+            Success message or error
+        """
+        try:
+            logger.info("="*60)
+            logger.info("[AppleScript] Executing AppleScript")
+            logger.info(f"  Code length: {len(code_snippet)} characters")
+            logger.info(f"  Code preview: {code_snippet[:200]}..." if len(code_snippet) > 200 else f"  Code: {code_snippet}")
+            logger.info("="*60)
+
+            # Send request to Electron app via WebSocket
+            request_data = {
+                "action": "applescript_execute",
+                "params": {
+                    "code_snippet": code_snippet
+                }
+            }
+
+            # Send via WebSocket
+            logger.info(f"[AppleScript] Connecting to WebSocket at {self.screenshot_ws_url}")
+            async with aiohttp.ClientSession() as session:
+                async with session.ws_connect(self.screenshot_ws_url) as ws:
+                    logger.info("[AppleScript] WebSocket connected")
+                    logger.info(f"[AppleScript] Sending request")
+                    await ws.send_json(request_data)
+
+                    logger.info("[AppleScript] Waiting for response...")
+                    response = await ws.receive_json()
+                    logger.info(f"[AppleScript] Received response: {response}")
+
+                    if response.get("success"):
+                        result = response.get("output", "")
+                        logger.info(f"[AppleScript] ✓ Executed successfully: {result}")
+
+                        # Check what was executed to provide context
+                        if "Calendar" in code_snippet and "make new event" in code_snippet:
+                            return "Successfully created the calendar event."
+                        elif "Notes" in code_snippet and "make new note" in code_snippet:
+                            return "Successfully created the note."
+                        elif "Reminders" in code_snippet and "make new reminder" in code_snippet:
+                            return "Successfully added the reminder."
+                        elif "display notification" in code_snippet:
+                            return "Successfully displayed the notification."
+                        elif "do shell script" in code_snippet:
+                            return f"Command executed. Result: {result}" if result else "Command executed successfully."
+                        else:
+                            return f"AppleScript executed successfully. {result}" if result else "AppleScript executed successfully."
+                    else:
+                        error = response.get("error", "Unknown error")
+                        logger.error(f"[AppleScript] ✗ Failed: {error}")
+                        return f"AppleScript execution failed: {error}"
+
+        except Exception as e:
+            logger.error(f"[AppleScript] Exception: {str(e)}", exc_info=True)
+            return f"Error executing AppleScript: {str(e)}"
+
+    async def _request_screenshot(self, region: str) -> str:
+        """Request screenshot from Electron app via WebSocket"""
+        try:
+            logger.info(f"Attempting to connect to screenshot service at {self.screenshot_ws_url}")
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.ws_connect(self.screenshot_ws_url) as ws:
+                    logger.info("WebSocket connection established")
+
+                    # Send screenshot request (cassette format)
+                    request_data = {
+                        "action": "capture_screenshot",
+                        "region": region
+                    }
+                    logger.info(f"Sending screenshot request: {request_data}")
+                    await ws.send_json(request_data)
+
+                    # Wait for response
+                    logger.info("Waiting for screenshot response...")
+                    msg = await ws.receive_json()
+                    logger.info(f"Received response: {type(msg)} with keys: {list(msg.keys()) if isinstance(msg, dict) else 'not a dict'}")
+
+                    if msg.get("success"):
+                        logger.info("Screenshot captured successfully")
+                        base64_data = msg.get("base64")
+                        if base64_data:
+                            logger.info(f"Received base64 data, length: {len(base64_data)}")
+                            return base64_data
+                        else:
+                            raise Exception("No base64 data in successful response")
+                    else:
+                        error_msg = msg.get("error", "Screenshot capture failed - no error message provided")
+                        logger.error(f"Screenshot capture failed: {error_msg}")
+                        raise Exception(error_msg)
+
+        except aiohttp.ClientError as e:
+            logger.error(f"WebSocket connection error: {e}")
+            raise Exception(f"Could not connect to screenshot service: {str(e)}")
+        except Exception as e:
+            logger.error(f"Unexpected error in screenshot request: {e}", exc_info=True)
+            raise Exception(f"Screenshot request failed: {str(e)}")
+
+    async def _analyze_with_vision(self, image_base64: str, query: str) -> str:
+        """Analyze screenshot with GPT-4o vision API"""
+        try:
+            response = await self.openai_client.chat.completions.create(
+                model="gpt-4o",
+                messages=[{
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": query},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{image_base64}",
+                                "detail": "auto"
+                            }
+                        }
+                    ]
+                }],
+                max_tokens=500,
+                temperature=0.7
+            )
+
+            return response.choices[0].message.content
+
+        except Exception as e:
+            logger.error(f"GPT-4o vision analysis error: {e}")
+            raise Exception(f"Could not analyze the screenshot: {str(e)}")
+
 
     def _get_instructions(self) -> str:
         """Get system instructions for the AI"""
-        tools_list = "\n".join([f"- {tool.name}: {tool.description}"
-                                for tool in self.mcp_router.list_tools()[:5]])
+        return f"""You are Clarity, a helpful AI assistant integrated with the user's macOS desktop.
 
-        return f"""You are Clarity, a helpful and friendly AI assistant with access to tools.
+CRITICAL INSTRUCTION FOR ALL MACOS OPERATIONS:
+================================================
+You have ONLY ONE TOOL for macOS operations: applescript_execute
 
-Your personality:
-- Be conversational and natural
-- Be helpful and proactive
-- Keep responses concise and clear
-- Be empathetic and understanding
+NEVER mention tool names to the user. ALWAYS use natural language.
 
-Your capabilities:
-- Answer questions on any topic
-- Help with analysis and problem-solving
-- Provide creative assistance
-- Engage in natural conversation
-- Create and manage notes in the database
-- Search for information you've stored
-- Track tasks and conversations
+Examples of AppleScript operations:
 
-Available tools:
-{tools_list}
+1. CALENDAR (Use proper date/time formats):
+- Create event for today at specific time:
+  set eventDate to current date
+  set hours of eventDate to 15
+  set minutes of eventDate to 0
+  tell application "Calendar" to make new event at calendar 1 with properties {{summary:"Meeting", start date:eventDate, end date:eventDate + (60 * minutes)}}
 
-When users ask you to remember something, create a note, or search for information,
-use the appropriate tool to help them. Always confirm when you've successfully
-completed an action.
+- Create event for tomorrow:
+  set eventDate to (current date) + (1 * days)
+  set hours of eventDate to 14
+  set minutes of eventDate to 30
+  tell application "Calendar" to make new event at calendar 1 with properties {{summary:"Tomorrow Meeting", start date:eventDate, end date:eventDate + (90 * minutes)}}
 
-Always maintain a warm, professional tone while being genuinely helpful."""
+2. NOTES:
+- Create note:
+  tell application "Notes" to make new note with properties {{name:"Meeting Notes", body:"Discussion points:\\n1. Project status\\n2. Next steps"}}
+
+3. REMINDERS:
+- Create reminder:
+  set reminderDate to (current date) + (2 * hours)
+  tell application "Reminders" to make new reminder with properties {{name:"Call client", remind me date:reminderDate}}
+
+4. NOTIFICATIONS:
+- Show notification:
+  display notification "Task completed" with title "Clarity"
+
+5. SYSTEM INFO:
+- Battery: do shell script "pmset -g batt | grep -o '[0-9]*%'"
+- Date/Time: do shell script "date"
+
+SCREENSHOT CAPABILITIES:
+========================
+You can capture and analyze screenshots when users need help with:
+- Visual content on their screen
+- UI elements or applications
+- Errors or issues they're seeing
+- Any visual context that would help answer their question
+
+Be proactive - if seeing their screen would help, just take a screenshot.
+
+EXECUTION FLOW:
+==============
+1. When user asks to add something to calendar/notes/reminders, acknowledge and execute immediately
+2. Construct the appropriate AppleScript code
+3. Execute it using applescript_execute
+4. Confirm success in natural language
+5. If there's an error, explain what went wrong
+
+TIMEZONE AWARENESS:
+==================
+- Always use proper AppleScript date objects
+- For "5pm today", calculate from current date/time
+- For "tomorrow at 3pm", add days then set specific hours
+
+IMPORTANT: Always respond in English only. Never use Spanish or any other language.
+Always describe actions in natural language without mentioning tool names."""
 
     async def cleanup(self):
         """Cleanup on disconnect"""
         logger.info("Cleaning up voice agent...")
+
+        # Close session
         if self.session:
             try:
                 await self.session.end()
                 logger.info("✓ Session closed")
             except Exception as e:
                 logger.error(f"Error closing session: {e}")
+
         self.session = None
         logger.info("Cleanup complete")
 
 
-def request_all_jobs(req: JobRequest) -> bool:
-    """Accept all jobs"""
-    logger.info(f"Received job request for room: {req.room.name}")
-    return True
-
 
 async def entrypoint(ctx: JobContext):
-    """Main entrypoint for the agent"""
-    logger.info("\n" + "="*50)
-    logger.info("CLARITY AGENT ENTRYPOINT")
-    logger.info("="*50)
+    """Main entrypoint for the agent worker"""
+    logger.info(f"[ENTRYPOINT] Starting for room: {ctx.room.name}")
 
+    # Create and start agent
     agent = ClarityVoiceAgent()
 
     try:
-        logger.info("Starting ClarityVoiceAgent...")
         await agent.start(ctx)
-        logger.info("✓ Agent started successfully")
+        logger.info("Agent session started successfully")
 
-        # Keep the agent running
-        logger.info("Agent running - waiting for speech input...")
-        logger.info(f"Room connection state: {ctx.room.connection_state}")
-        iteration = 0
-        while ctx.room:
-            iteration += 1
-            logger.info(f"Agent loop iteration {iteration}, room: {self.room_name}, state: {ctx.room.connection_state}")
+        # Keep the agent running (simplified like Cassette)
+        await asyncio.sleep(float("inf"))
 
-            # Check if this is our target room
-            if self.room_name.startswith("clarity-"):
-                logger.info(f"✓ Processing target room: {self.room_name}")
-                break
-            else:
-                logger.info(f"Waiting for target room, current room: {self.room_name}")
-                await asyncio.sleep(1)
-                continue
-
-            # Check if room is still connected
-            if ctx.room.connection_state == "disconnected":
-                logger.info("Room disconnected, breaking loop")
-                break
-
-        logger.info("Agent main loop ended")
-
-    except KeyboardInterrupt:
-        logger.info("Received interrupt signal")
     except Exception as e:
         logger.error(f"Agent error: {e}", exc_info=True)
     finally:
-        logger.info("Shutting down agent...")
         await agent.cleanup()
-        logger.info("Agent shutdown complete")
+        logger.info("Agent stopped")
 
 
 if __name__ == "__main__":
-    logger.info("\n" + "#"*50)
-    logger.info("# CLARITY VOICE AGENT STARTING")
-    logger.info("#"*50)
+    logger.info("Starting Clarity voice agent...")
 
-    # Verify environment (same as Cassette)
-    livekit_url = os.getenv("LIVEKIT_URL")
-    livekit_key = os.getenv("LIVEKIT_API_KEY")
-    livekit_secret = os.getenv("LIVEKIT_API_SECRET")
-
-    logger.info("Environment check:")
-    logger.info(f"  LiveKit URL: {livekit_url or 'NOT SET'}")
-    logger.info(f"  LiveKit API Key: {'SET' if livekit_key else 'NOT SET'}")
-    logger.info(f"  LiveKit Secret: {'SET' if livekit_secret else 'NOT SET'}")
-
-    if not all([livekit_url, livekit_key, livekit_secret]):
-        logger.error("Missing LiveKit configuration! Check .env file")
-        sys.exit(1)
-
-    # Map ELEVENLABS_API_KEY to ELEVEN_API_KEY for ElevenLabs plugin compatibility (same as Cassette)
+    # Map ELEVENLABS_API_KEY to ELEVEN_API_KEY for ElevenLabs plugin compatibility
     if os.getenv("ELEVENLABS_API_KEY") and not os.getenv("ELEVEN_API_KEY"):
         os.environ["ELEVEN_API_KEY"] = os.getenv("ELEVENLABS_API_KEY")
-        logger.info("Mapped ELEVENLABS_API_KEY to ELEVEN_API_KEY for ElevenLabs plugin")
+        logger.info("Mapped ELEVENLABS_API_KEY to ELEVEN_API_KEY")
 
-    logger.info("Starting LiveKit worker...")
-
-    # Run the agent worker with job request function to accept all jobs (like Cassette)
+    # Run the agent worker (simplified like Cassette)
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
-            request_fnc=request_all_jobs,
-        )
+        ),
     )
