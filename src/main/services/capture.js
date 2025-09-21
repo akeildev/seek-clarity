@@ -101,27 +101,33 @@ class DesktopCaptureService {
       sourceId = null,
       saveToFile = false,
       filename = null,
-      quality = 'high'
+      quality = 'medium', // Changed default to medium for better performance
+      compress = true // Add compression option
     } = options;
 
     try {
       let sources = [];
 
+      // Reduced resolutions for better performance and smaller file sizes
+      const resolutions = {
+        low: { width: 1280, height: 720 },
+        medium: { width: 1920, height: 1080 },
+        high: { width: 2560, height: 1440 }
+      };
+
+      const thumbnailSize = resolutions[quality] || resolutions.medium;
+
       if (type === 'screen' || !sourceId) {
         // Capture entire screen
         sources = await desktopCapturer.getSources({
           types: ['screen'],
-          thumbnailSize: quality === 'high'
-            ? { width: 3840, height: 2160 }
-            : { width: 1920, height: 1080 }
+          thumbnailSize
         });
       } else if (type === 'window' && sourceId) {
         // Capture specific window
         sources = await desktopCapturer.getSources({
           types: ['window'],
-          thumbnailSize: quality === 'high'
-            ? { width: 3840, height: 2160 }
-            : { width: 1920, height: 1080 }
+          thumbnailSize
         });
         sources = sources.filter(s => s.id === sourceId);
       }
@@ -131,13 +137,28 @@ class DesktopCaptureService {
       }
 
       const source = sources[0];
+
+      // Convert to JPEG with compression for smaller size
+      let dataUrl;
+      if (compress) {
+        // Convert to JPEG with quality setting (0.7 = 70% quality)
+        dataUrl = source.thumbnail.toJPEG(70).toString('base64');
+        dataUrl = `data:image/jpeg;base64,${dataUrl}`;
+      } else {
+        dataUrl = source.thumbnail.toDataURL();
+      }
+
       const screenshot = {
-        dataUrl: source.thumbnail.toDataURL(),
+        dataUrl: dataUrl,
         size: source.thumbnail.getSize(),
         name: source.name,
         id: source.id,
         timestamp: new Date().toISOString()
       };
+
+      // Log the size for debugging
+      const base64Size = dataUrl.length;
+      console.log(`[Capture] Screenshot size: ${(base64Size / 1024 / 1024).toFixed(2)} MB`);
 
       // Save to file if requested
       if (saveToFile) {

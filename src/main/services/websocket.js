@@ -14,6 +14,7 @@ class ScreenshotWebSocketServer extends EventEmitter {
     console.log('[WebSocket] Screenshot WebSocket server initialized');
   }
 
+
   start() {
     if (this.isRunning) {
       console.log('[WebSocket] Server already running');
@@ -133,16 +134,18 @@ class ScreenshotWebSocketServer extends EventEmitter {
     try {
       console.log('[WebSocket] Processing screenshot request (cassette format):', request);
 
+
       // Validate capture service
       if (!this.captureService) {
         throw new Error('Capture service not available');
       }
 
-      // Capture screenshot using the capture service
+      // Capture screenshot using the capture service with optimized settings
       console.log('[WebSocket] Calling captureService.captureScreen...');
       const screenshot = await this.captureService.captureScreen({
         type: 'screen',
-        quality: 'high'
+        quality: 'low', // Use low quality for smaller size (1280x720)
+        compress: true   // Enable JPEG compression
       });
 
       console.log('[WebSocket] Screenshot captured, processing response...');
@@ -167,6 +170,7 @@ class ScreenshotWebSocketServer extends EventEmitter {
       this.sendMessage(ws, response);
 
       console.log('[WebSocket] Screenshot sent to client (cassette format)');
+
 
     } catch (error) {
       console.error('[WebSocket] Screenshot capture failed:', error);
