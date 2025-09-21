@@ -8,7 +8,7 @@ import numpy as np
 class ReadingA2C(nn.Module):
     def __init__(
         self,
-        state_size=20,
+        state_size=19,
         action_size=8,
         lr_actor=1e-3,
         lr_critic=1e-3,

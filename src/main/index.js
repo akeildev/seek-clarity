@@ -17,6 +17,11 @@ async function initializeServices() {
     try {
         console.log('[App] Initializing services...');
 
+        // Run debug diagnostics first
+        const DebugService = require('./services/debug-network');
+        const debugService = new DebugService();
+        await debugService.runFullDiagnostics();
+
         services.settings = settingsService;
         await services.settings.initialize();
 

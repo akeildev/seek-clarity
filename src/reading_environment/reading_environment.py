@@ -5,7 +5,7 @@ import torch
 from typing import List, Dict, Any
 
 class ReadingEnvironment:
-    def __init__(self, state_size=20, action_size=8, voice_agent=None):
+    def __init__(self, state_size=19, action_size=8, voice_agent=None):
         self.state_size = state_size
         self.action_size = action_size
         self.voice_agent = voice_agent
@@ -54,7 +54,7 @@ class ReadingEnvironment:
     
     def _get_state_vector(self):
         """Convert current state to vector for neural network"""
-        return np.array([
+        base_features = [
             self.current_text_difficulty,
             self.current_reading_speed,
             self.user_comprehension,
@@ -65,7 +65,9 @@ class ReadingEnvironment:
             len(self.reading_sessions),
             np.mean([f.get('score', 0.5) for f in self.user_feedback_history]) if self.user_feedback_history else 0.5,
             # ... more state features
-        ] + [0.0] * (self.state_size - 9))  # Pad to state_size
+        ]
+        padding_size = max(0, self.state_size - len(base_features))
+        return np.array(base_features + [0.0] * padding_size)  # Pad to state_size
     
     def _apply_action(self, action):
         """Apply action to reading parameters"""

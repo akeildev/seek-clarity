@@ -13,6 +13,21 @@ import aiohttp
 from typing import Optional, Dict, Any
 from datetime import datetime
 import sys
+from pathlib import Path
+
+# Configure logging first with detailed formatting
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
+)
+logger = logging.getLogger("clarity-agent")
+
+# Add specific loggers for audio debugging
+audio_logger = logging.getLogger("clarity-agent.audio")
+audio_logger.setLevel(logging.DEBUG)
+
+# Add reading environment to path
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'reading_environment'))
 
 from livekit.agents import (
     AutoSubscribe,
@@ -28,14 +43,24 @@ from livekit.plugins import openai, elevenlabs, silero
 from openai.types.beta.realtime.session import InputAudioTranscription
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
-from pathlib import Path
 
 # Load environment variables
 load_dotenv()
 
-# Configure logging (simplified like Cassette)
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("clarity-agent")
+# Import RL reading environment
+try:
+    import numpy as np
+    from reading_environment import ReadingEnvironment
+    from reading_agent import ReadingAgent
+    from reading_a2c import ReadingA2C  # Check the actual class name
+    A2CAgent = ReadingA2C  # Alias for consistency
+    logger.info("✅ RL Reading Environment modules loaded successfully")
+except ImportError as e:
+    logger.warning(f"⚠️ Could not import RL Reading Environment: {e}")
+    ReadingEnvironment = None
+    ReadingAgent = None
+    A2CAgent = None
+    np = None
 
 
 class ClarityVoiceAgent:
@@ -51,19 +76,54 @@ class ClarityVoiceAgent:
         self._screenshot_cache = None
         self._screenshot_cache_time = None
 
+        # Initialize RL Reading Environment
+        self.reading_env = None
+        self.reading_agent = None
+        self.a2c_agent = None
+        self._init_reading_environment()
+
+    async def _say_with_logging(self, text: str, context: str = "unknown"):
+        """Simple wrapper for session.say with basic logging"""
+        if not self.session:
+            logger.warning(f"[AUDIO] No session available for: {context}")
+            return False
+
+        logger.info(f"[AUDIO] {context}: Sending {len(text)} chars")
+        start_time = time.time()
+
+        try:
+            await self.session.say(text)
+            duration = time.time() - start_time
+            logger.info(f"[AUDIO] ✅ {context}: Completed in {duration:.2f}s")
+            return True
+
+        except asyncio.CancelledError:
+            duration = time.time() - start_time
+            logger.warning(f"[AUDIO] ⚠️ {context}: CANCELLED at {duration:.2f}s")
+            raise
+
+        except Exception as e:
+            duration = time.time() - start_time
+            logger.error(f"[AUDIO] ❌ {context}: FAILED at {duration:.2f}s - {e}")
+            return False
+
     async def start(self, ctx: JobContext):
         """Initialize and start the agent session - simplified like Cassette"""
         self.context = ctx
-        logger.info(f"Starting agent with room: {ctx.room.name}")
+        logger.info(f"[START] Starting agent with room: {ctx.room.name}")
+        logger.debug(f"[START] Room metadata: {ctx.room.metadata}")
 
         # Connect to room first (like Cassette)
+        logger.info("[START] Connecting to room with AUDIO_ONLY subscription...")
         await ctx.connect(auto_subscribe=AutoSubscribe.AUDIO_ONLY)
+        logger.info("[START] ✅ Connected to room")
 
         # Create agent with instructions and tools (like Cassette)
         tools = [
             self.take_screenshot,
             self.test_screenshot_service,
             self.applescript_execute,  # Single tool for all macOS automation like Cassette
+            self.analyze_reading_pattern,  # RL reading pattern analysis
         ]
 
         # Import Agent locally like Cassette
@@ -83,6 +143,10 @@ class ClarityVoiceAgent:
             logger.info(f"ElevenLabs API key detected")
 
         # Create agent session (simplified like Cassette)
+        logger.info("[AUDIO] Creating AgentSession with ElevenLabs TTS...")
+        logger.debug(f"[AUDIO] TTS Config: voice_id={eleven_voice_id}, model=eleven_turbo_v2_5")
+        logger.debug(f"[AUDIO] VAD Config: min_speech=0.2s, min_silence=0.5s, threshold=0.5")
+
         self.session = AgentSession(
             llm=openai.realtime.RealtimeModel(
                 model="gpt-4o-realtime-preview",
@@ -103,10 +167,17 @@ class ClarityVoiceAgent:
                 activation_threshold=0.5,
             ),
         )
+        logger.info("[AUDIO] AgentSession created successfully")
 
         # Start the session (like Cassette)
-        await self.session.start(agent=agent, room=ctx.room)
-        logger.info("✓ Voice session started successfully")
+        logger.info("[AUDIO] Starting voice session...")
+        try:
+            await self.session.start(agent=agent, room=ctx.room)
+            logger.info("[AUDIO] ✅ Voice session started successfully")
+            logger.debug(f"[AUDIO] Room: {ctx.room.name}, Participants: {len(ctx.room.remote_participants)}")
+        except Exception as e:
+            logger.error(f"[AUDIO] ❌ Failed to start session: {e}", exc_info=True)
+            raise
 
         # Send greeting
         await self._send_greeting()
@@ -115,12 +186,14 @@ class ClarityVoiceAgent:
         """Send initial greeting"""
         greeting = "Hello! I'm Clarity, your AI assistant. I can help you with questions, analysis, and I can see your screen when you ask. How can I help you today?"
         if self.session:
-            logger.info("Sending greeting message...")
+            logger.info(f"[AUDIO] Sending greeting ({len(greeting)} chars)")
             try:
+                start_time = time.time()
                 await self.session.say(greeting)
-                logger.info("✓ Greeting sent successfully")
+                duration = time.time() - start_time
+                logger.info(f"[AUDIO] ✅ Greeting sent in {duration:.2f}s")
             except Exception as e:
-                logger.error(f"Failed to send greeting: {e}")
+                logger.error(f"[AUDIO] ❌ Failed to send greeting: {e}")
 
 
     @function_tool
@@ -143,11 +216,12 @@ class ClarityVoiceAgent:
         try:
             # Quick acknowledgment before taking screenshot
             if self.session and context:
+                logger.info("[AUDIO] Sending screenshot acknowledgment")
                 try:
                     await self.session.say("Give me a sec while I take a look.")
-                    logger.info("Sent screenshot acknowledgment")
+                    logger.info("[AUDIO] ✅ Screenshot acknowledgment sent")
                 except Exception as e:
-                    logger.warning(f"Could not send acknowledgment: {e}")
+                    logger.warning(f"[AUDIO] Could not send acknowledgment: {e}")
 
             # Check cache (5 second validity) - same as cassette
             current_time = time.time()
@@ -413,20 +487,131 @@ TIMEZONE AWARENESS:
 IMPORTANT: Always respond in English only. Never use Spanish or any other language.
 Always describe actions in natural language without mentioning tool names."""
 
+    def _init_reading_environment(self):
+        """Initialize the RL reading environment"""
+        try:
+            if ReadingEnvironment and ReadingAgent and A2CAgent:
+                logger.info("[RL] Initializing Reading Environment...")
+
+                # Initialize reading environment with correct parameters
+                self.reading_env = ReadingEnvironment(
+                    state_size=19,  # State size for reading environment
+                    action_size=8,  # Number of possible actions
+                    voice_agent=self  # Pass reference to voice agent
+                )
+
+                # Initialize A2C agent for reading
+                state_dim = 19  # Match the environment's state size
+                action_dim = 8  # Match the environment's action size
+                self.a2c_agent = A2CAgent(
+                    state_size=state_dim,  # Fixed: use state_size instead of state_dim
+                    action_size=action_dim,  # Fixed: use action_size instead of action_dim
+                    hidden_dim=128
+                )
+
+                logger.info("[RL] ✅ Reading Environment initialized successfully")
+                logger.info(f"[RL]   State size: {self.reading_env.state_size}, Action size: {self.reading_env.action_size}")
+                logger.info(f"[RL]   A2C Agent: State dim: {state_dim}, Action dim: {action_dim}")
+            else:
+                logger.warning("[RL] Reading Environment modules not available")
+        except Exception as e:
+            logger.error(f"[RL] Failed to initialize Reading Environment: {e}")
+            self.reading_env = None
+            self.a2c_agent = None
+
+    @function_tool
+    async def analyze_reading_pattern(
+        self,
+        context: RunContext,
+        text: str = None,
+        duration: int = 5
+    ) -> str:
+        """
+        Analyze reading patterns using RL agent.
+
+        Args:
+            text: Text to analyze reading patterns for
+            duration: Duration to simulate reading (seconds)
+
+        Returns:
+            Analysis of reading patterns
+        """
+        try:
+            if not self.reading_env or not self.a2c_agent:
+                return "Reading environment not initialized. RL analysis unavailable."
+
+            logger.info("[RL] Analyzing reading pattern...")
+            logger.info(f"[RL]   Text length: {len(text) if text else 0} chars")
+            logger.info(f"[RL]   Duration: {duration}s")
+
+            # Reset environment
+            state = self.reading_env.reset()
+
+            # Simulate reading for specified duration
+            total_reward = 0
+            fixations = []
+            steps = duration * 4  # Approximate steps based on duration
+
+            for step in range(steps):
+                # Get action from A2C agent
+                action = self.a2c_agent.select_action(state)
+
+                # Take action in environment
+                next_state, reward, done, info = self.reading_env.step(action)
+
+                # Store fixation data
+                if 'fixation' in info:
+                    fixations.append(info['fixation'])
+
+                total_reward += reward
+                state = next_state
+
+                if done:
+                    break
+
+            # Analyze patterns
+            avg_fixation = np.mean([f['duration'] for f in fixations]) if fixations else 0
+            num_fixations = len(fixations)
+
+            analysis = f"""Reading Pattern Analysis:
+- Total fixations: {num_fixations}
+- Average fixation duration: {avg_fixation:.0f}ms
+- Total reward: {total_reward:.2f}
+- Reading efficiency: {'High' if total_reward > 0 else 'Low'}
+- Pattern type: {'Scanning' if num_fixations > 20 else 'Focused'}"""
+
+            logger.info(f"[RL] ✅ Analysis complete. Fixations: {num_fixations}, Reward: {total_reward:.2f}")
+            return analysis
+
+        except Exception as e:
+            logger.error(f"[RL] Reading analysis failed: {e}")
+            return f"Failed to analyze reading pattern: {str(e)}"
+
     async def cleanup(self):
         """Cleanup on disconnect"""
-        logger.info("Cleaning up voice agent...")
+        logger.info("[CLEANUP] Starting cleanup of voice agent...")
+
+        # Close RL environment if exists
+        if self.reading_env:
+            try:
+                self.reading_env.close()
+                logger.info("[CLEANUP] RL Reading environment closed")
+            except:
+                pass
 
         # Close session
         if self.session:
             try:
+                logger.info("[CLEANUP] Ending voice session...")
                 await self.session.end()
-                logger.info("✓ Session closed")
+                logger.info("[CLEANUP] ✅ Session closed successfully")
+            except asyncio.CancelledError:
+                logger.warning("[CLEANUP] ⚠️ Session end cancelled")
             except Exception as e:
-                logger.error(f"Error closing session: {e}")
+                logger.error(f"[CLEANUP] ❌ Error closing session: {e}", exc_info=True)
 
         self.session = None
-        logger.info("Cleanup complete")
+        logger.info("[CLEANUP] ✅ Cleanup complete")
 
 
 
