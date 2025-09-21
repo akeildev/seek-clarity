@@ -19,7 +19,6 @@ async function initializeServices() {
 
         const config = services.settings.getLiveKitConfig();
         services.livekit = new LiveKitService();
-        services.livekit.config = config;
         const livekitReady = await services.livekit.initialize();
 
         if (!livekitReady) {
