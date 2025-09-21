@@ -33,22 +33,19 @@ class ScreenshotWebSocketServer extends EventEmitter {
         ws.clientId = clientId;
         this.clients.add(ws);
 
-        // Send welcome message
-        this.sendMessage(ws, {
-          type: 'connected',
-          clientId: clientId,
-          message: 'Connected to Clarity screenshot service',
-          timestamp: new Date().toISOString()
-        });
+        // Don't send welcome message to avoid confusion with screenshot responses
+        // The client can send a ping if it wants to test the connection
 
         // Handle messages from client
         ws.on('message', async (data) => {
           try {
+            console.log(`[WebSocket] Raw message from ${clientId}:`, data.toString());
             const message = JSON.parse(data.toString());
-            console.log(`[WebSocket] Received message from ${clientId}:`, message.type);
+            console.log(`[WebSocket] Parsed message from ${clientId}:`, JSON.stringify(message, null, 2));
             await this.handleMessage(ws, message);
           } catch (error) {
             console.error('[WebSocket] Error processing message:', error);
+            console.error('[WebSocket] Raw data that failed to parse:', data.toString());
             this.sendError(ws, 'Invalid message format');
           }
         });
@@ -86,8 +83,26 @@ class ScreenshotWebSocketServer extends EventEmitter {
   }
 
   async handleMessage(ws, message) {
-    const { type, payload = {} } = message;
+    const { action, type, payload = {} } = message;
 
+    // Handle cassette-style action messages
+    if (action) {
+      switch (action) {
+        case 'capture_screenshot':
+          await this.handleScreenshotRequest(ws, message);
+          break;
+
+        case 'ping':
+          this.sendMessage(ws, { success: true, action: 'pong' });
+          break;
+
+        default:
+          this.sendMessage(ws, { success: false, error: `Unknown action: ${action}` });
+      }
+      return;
+    }
+
+    // Handle original type-based messages
     switch (type) {
       case 'capture':
         await this.handleCaptureRequest(ws, payload);
@@ -111,6 +126,56 @@ class ScreenshotWebSocketServer extends EventEmitter {
 
       default:
         this.sendError(ws, `Unknown message type: ${type}`);
+    }
+  }
+
+  async handleScreenshotRequest(ws, request) {
+    try {
+      console.log('[WebSocket] Processing screenshot request (cassette format):', request);
+
+      // Validate capture service
+      if (!this.captureService) {
+        throw new Error('Capture service not available');
+      }
+
+      // Capture screenshot using the capture service
+      console.log('[WebSocket] Calling captureService.captureScreen...');
+      const screenshot = await this.captureService.captureScreen({
+        type: 'screen',
+        quality: 'high'
+      });
+
+      console.log('[WebSocket] Screenshot captured, processing response...');
+      console.log('[WebSocket] Screenshot object keys:', Object.keys(screenshot || {}));
+
+      if (!screenshot || !screenshot.dataUrl) {
+        throw new Error('Screenshot capture returned invalid data');
+      }
+
+      // Extract base64 from dataURL (remove data:image/png;base64, prefix)
+      const base64Data = screenshot.dataUrl.replace(/^data:image\/\w+;base64,/, '');
+
+      // Send cassette-style response
+      const response = {
+        success: true,
+        base64: base64Data,
+        requestId: request.requestId,
+        timestamp: new Date().toISOString()
+      };
+
+      console.log('[WebSocket] Sending response with base64 length:', base64Data.length);
+      this.sendMessage(ws, response);
+
+      console.log('[WebSocket] Screenshot sent to client (cassette format)');
+
+    } catch (error) {
+      console.error('[WebSocket] Screenshot capture failed:', error);
+      console.error('[WebSocket] Error stack:', error.stack);
+      this.sendMessage(ws, {
+        success: false,
+        error: error.message,
+        requestId: request.requestId
+      });
     }
   }
 
