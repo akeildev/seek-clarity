@@ -3,6 +3,8 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const LiveKitService = require('./services/livekit');
 const settingsService = require('./services/settings');
+const DesktopCaptureService = require('./services/capture');
+const ScreenshotWebSocketServer = require('./services/websocket');
 const IPCManager = require('../shared/ipc');
 const { IPC_CHANNELS } = require('../shared/constants');
 
@@ -25,6 +27,14 @@ async function initializeServices() {
         if (!livekitReady) {
             console.warn('[App] LiveKit service not fully configured');
         }
+
+        // Initialize screen capture services
+        console.log('[App] Initializing desktop capture service...');
+        services.capture = new DesktopCaptureService();
+
+        console.log('[App] Initializing screenshot WebSocket server...');
+        services.websocketServer = new ScreenshotWebSocketServer(services.capture);
+        services.websocketServer.start();
 
         services.mainWindow = mainWindow;
 
@@ -117,6 +127,29 @@ app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
         app.quit();
     }
+});
+
+app.on('before-quit', () => {
+    console.log('[App] Application shutting down...');
+
+    // Clean up services
+    if (services.websocketServer) {
+        services.websocketServer.stop();
+    }
+
+    if (services.capture) {
+        services.capture.destroy();
+    }
+
+    if (services.livekit) {
+        services.livekit.stopSession();
+    }
+
+    if (ipcManager) {
+        ipcManager.cleanup();
+    }
+
+    console.log('[App] Services cleaned up');
 });
 
 module.exports = { mainWindow };
