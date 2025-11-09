@@ -159,4 +159,4 @@ For issues or questions:
 
 ## License
 
-[Include license information here]
+MIT
